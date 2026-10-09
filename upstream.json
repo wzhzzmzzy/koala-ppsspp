@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/hrydgard/ppsspp.git",
+  "ref": "v1.20.4",
+  "revision": "fa50bb1976065c4f8b1b47af227d367fe9771555",
+  "patch": "patches/ppsspp-native.patch",
+  "additionalSourceFiles": [
+    "Sources/KoalaNativeBridge.h",
+    "Sources/KoalaMetrics.h"
+  ]
+}

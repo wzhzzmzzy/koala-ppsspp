@@ -1,0 +1,265 @@
+diff --git a/Common/File/FileUtil.cpp b/Common/File/FileUtil.cpp
+index 53a86f5..b6a3ecf 100644
+--- a/Common/File/FileUtil.cpp
++++ b/Common/File/FileUtil.cpp
+@@ -21,6 +21,10 @@
+ #error Win32 build requires a unicode build
+ #endif
+ #else
++#if defined(__APPLE__)
++// Modern Apple SDKs hide fseeko/ftello/ftruncate with only _POSIX_SOURCE.
++#define _DARWIN_C_SOURCE
++#endif
+ #define _POSIX_SOURCE
+ #define _LARGE_TIME_API
+ #endif
+diff --git a/Core/HW/Display.cpp b/Core/HW/Display.cpp
+index 1ac986a..c4675a4 100644
+--- a/Core/HW/Display.cpp
++++ b/Core/HW/Display.cpp
+@@ -93,7 +93,9 @@ static void CalculateFPS() {
+ 		}
+ 	}
+ 
+-	if ((DebugOverlay)g_Config.iDebugOverlay == DebugOverlay::FRAME_GRAPH || coreCollectDebugStats) {
++	// Koala records the same real VBlank intervals used by the upstream graph.
++	static const bool koalaTelemetry = getenv("KOALA_CONTROL_DIR") != nullptr;
++	if ((DebugOverlay)g_Config.iDebugOverlay == DebugOverlay::FRAME_GRAPH || coreCollectDebugStats || koalaTelemetry) {
+ 		frameTimeHistory[frameTimeHistoryPos++] = (float)(now - lastFrameTimeHistory);
+ 		lastFrameTimeHistory = now;
+ 		frameTimeHistoryPos = frameTimeHistoryPos % frameTimeHistorySize;
+diff --git a/Core/Util/PathUtil.cpp b/Core/Util/PathUtil.cpp
+index 96be0ea..b4d6aad 100644
+--- a/Core/Util/PathUtil.cpp
++++ b/Core/Util/PathUtil.cpp
+@@ -1,4 +1,5 @@
+ #include <string_view>
++#include <cstdlib>
+ 
+ #include "Common/File/Path.h"
+ #include "Common/File/FileUtil.h"
+@@ -43,6 +44,16 @@ Path FindConfigFile(const Path &searchPath, std::string_view baseFilename, bool
+ }
+ 
+ Path GetSysDirectory(PSPDirectories directoryType) {
++#if PPSSPP_PLATFORM(MAC)
++	// Keep launcher-managed configuration and disposable caches outside memstick.
++	const char *overrideDir = nullptr;
++	if (directoryType == DIRECTORY_SYSTEM) overrideDir = getenv("KOALA_CONFIG_DIR");
++	if (directoryType == DIRECTORY_CACHE || directoryType == DIRECTORY_APP_CACHE) overrideDir = getenv("KOALA_CACHE_DIR");
++	if (directoryType == DIRECTORY_DUMP) overrideDir = getenv("KOALA_LOG_DIR");
++	if (overrideDir && overrideDir[0] == '/') {
++		return directoryType == DIRECTORY_DUMP ? Path(overrideDir) / "DUMP" : Path(overrideDir);
++	}
++#endif
+ 	const Path &memStickDirectory = g_Config.memStickDirectory;
+ 	Path pspDirectory;
+ 	if (!strcasecmp(memStickDirectory.GetFilename().c_str(), "PSP")) {
+diff --git a/SDL/CocoaBarItems.mm b/SDL/CocoaBarItems.mm
+index aedfdcb..a129c96 100644
+--- a/SDL/CocoaBarItems.mm
++++ b/SDL/CocoaBarItems.mm
+@@ -24,6 +24,9 @@
+ #include "Common/StringUtils.h"
+ #include "Core/Config.h"
+ #include "Core/Util/RecentFiles.h"
++#include "Core/SaveState.h"
++#include "Core/ELF/ParamSFO.h"
++#include "Common/File/FileUtil.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -42,6 +45,7 @@
+ @interface BarItemsManager : NSObject <NSMenuDelegate>
+ +(instancetype)sharedInstance;
+ -(void)setupAppBarItems;
++-(void)setupKoalaMenus;
+ @property (assign) NSMenu *fileMenu;
+ @end
+ 
+@@ -80,6 +84,7 @@ -(NSString *)localizedMenuString: (const char *)key {
+ }
+ 
+ -(void)setupAppBarItems {
++    if (getenv("KOALA_CONTROL_DIR")) { [self setupKoalaMenus]; return; }
+     
+     NSMenuItem *fileMenuItem = [[NSMenuItem alloc] init];
+     fileMenuItem.submenu = [self makeFileSubmenu];
+@@ -130,6 +135,54 @@ -(void)setupAppBarItems {
+     }
+ }
+ 
++// The standalone launcher owns settings, save slots and diagnostics. Do not expose
++// upstream debugger/symbol/network actions that this app does not implement.
++-(void)koalaRequest:(NSMenuItem *)item {
++    NSString *root = @(getenv("KOALA_CONTROL_DIR"));
++    [item.representedObject writeToFile:[root stringByAppendingPathComponent:@"ui-request.txt"]
++                           atomically:YES encoding:NSUTF8StringEncoding error:nil];
++}
++-(BOOL)validateMenuItem:(NSMenuItem *)item {
++    if (item.action != @selector(koalaRequest:)) return YES;
++    NSString *op = item.representedObject;
++    if ([op isEqualToString:@"pause"]) item.title = Core_IsStepping() ? @"继续" : @"暂停";
++    if ([op isEqualToString:@"mute"]) item.title = g_Config.bEnableSound ? @"静音" : @"开启声音";
++    if ([op isEqualToString:@"hud"]) item.state = g_Config.iShowStatusFlags ? NSControlStateValueOn : NSControlStateValueOff;
++    if ([op isEqualToString:@"load 1"]) {
++        return PSP_IsInited() && File::Exists(SaveState::GenerateSaveSlotPath(SaveState::GetGamePrefix(g_paramSFO), 1, "ppst"));
++    }
++    if ([op isEqualToString:@"pause"] || [op isEqualToString:@"mute"] || [op isEqualToString:@"save 1"] || [op isEqualToString:@"hud"]) return PSP_IsInited();
++    return YES;
++}
++-(void)setupKoalaMenus {
++    NSMenu *bar = [[NSMenu alloc] init];
++    NSArray *groups = @[
++        @[@"Koala PSP Player", @[
++            @[@"回到游戏库", @"library", @"1"], @[@"播放设置…", @"settings", @","],
++            @[@"保存并结束游戏", @"quit", @"q"]]],
++        @[@"游戏", @[
++            @[@"暂停", @"pause", @"p"], @[@"保存手动存档", @"save 1", @"s"],
++            @[@"读取手动存档", @"load 1", @"l"], @[@"静音", @"mute", @""]]],
++        @[@"诊断", @[
++            @[@"显示性能 HUD", @"hud", @"h"], @[@"日志与调试…", @"diagnostics", @"d"]]],
++        @[@"帮助", @[@[@"键盘与手柄示意图…", @"controls", @"/"]]]
++    ];
++    for (NSArray *group in groups) {
++        NSMenuItem *parent = [[NSMenuItem alloc] initWithTitle:group[0] action:nil keyEquivalent:@""];
++        NSMenu *menu = [[NSMenu alloc] initWithTitle:group[0]];
++        for (NSArray *entry in group[1]) {
++            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:entry[0] action:@selector(koalaRequest:) keyEquivalent:entry[2]];
++            item.target = self; item.representedObject = entry[1]; [menu addItem:item];
++        }
++        parent.submenu = menu; [bar addItem:parent];
++    }
++    [NSApp setWindowsMenu:nil]; [NSApp setHelpMenu:nil]; [NSApp setMainMenu:bar];
++    if (const char *logDir = getenv("KOALA_LOG_DIR")) {
++        NSData *data = [NSJSONSerialization dataWithJSONObject:groups options:NSJSONWritingPrettyPrinted error:nil];
++        [data writeToFile:[@(logDir) stringByAppendingPathComponent:@"native-menus.json"] atomically:YES];
++    }
++}
++
+ -(void)presentAboutMenu {
+     NSWindow *window = [NSWindow windowWithContentViewController:[PPSSPPAboutViewController new]];
+     window.title = @"PPSSPP";
+diff --git a/SDL/SDLGLGraphicsContext.cpp b/SDL/SDLGLGraphicsContext.cpp
+index bfa33bd..ff6ec40 100644
+--- a/SDL/SDLGLGraphicsContext.cpp
++++ b/SDL/SDLGLGraphicsContext.cpp
+@@ -390,7 +390,7 @@ int SDLGLGraphicsContext::Init(SDL_Window *&window, int x, int y, int w, int h,
+ 	}
+ 
+ 	// At this point, we have a window that we can show finally.
+-	SDL_ShowWindow(window);
++	if (!getenv("KOALA_BACKGROUND_TEST")) SDL_ShowWindow(window);
+ 
+ #ifdef USING_EGL
+ 	if (EGL_Open(window) != 0) {
+diff --git a/SDL/SDLMain.cpp b/SDL/SDLMain.cpp
+index 6853525..b1494cf 100644
+--- a/SDL/SDLMain.cpp
++++ b/SDL/SDLMain.cpp
+@@ -1588,6 +1588,7 @@ int main(int argc, char *argv[]) {
+ 	mode |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+ #else
+ 	mode |= SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
++	if (getenv("KOALA_BACKGROUND_TEST")) mode |= SDL_WINDOW_HIDDEN;
+ #endif
+ 
+ 	if (mode & SDL_WINDOW_FULLSCREEN_DESKTOP) {
+diff --git a/SDL/SDLMain.mm b/SDL/SDLMain.mm
+index 63909bf..ac29a89 100644
+--- a/SDL/SDLMain.mm
++++ b/SDL/SDLMain.mm
+@@ -209,9 +209,14 @@ static void CustomApplicationMain (int argc, char **argv)
+ 
+     /* Ensure the application object is initialised */
+     [NSApplication sharedApplication];
+-    
++    if (getenv("KOALA_BACKGROUND_TEST")) {
++        [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
++        setenv("SDL_MAC_BACKGROUND_APP", "1", 1);
++        setenv("SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN", "1", 1);
++    }
++
+ #ifdef SDL_USE_CPS
+-    {
++    if (!getenv("KOALA_BACKGROUND_TEST")) {
+         CPSProcessSerNum PSN;
+         /* Tell the dock about us */
+         if (!CPSGetCurrentProcess(&PSN))
+diff --git a/UI/DebugOverlay.cpp b/UI/DebugOverlay.cpp
+index 5e517c8..8a20bdb 100644
+--- a/UI/DebugOverlay.cpp
++++ b/UI/DebugOverlay.cpp
+@@ -466,6 +466,9 @@ Invalid / Unknown (%d)
+ 	ctx->RebindTexture();
+ }
+ 
++#include "UI/KoalaMetrics.h"
++#include "Common/TimeUtil.h"
++
+ void DrawFPS(UIContext *ctx, const Bounds &bounds) {
+ 	FontID ubuntu24("UBUNTU24");
+ 	float vps, fps, actual_fps;
+@@ -476,7 +479,8 @@ void DrawFPS(UIContext *ctx, const Bounds &bounds) {
+ 
+ 	if ((g_Config.iShowStatusFlags & ((int)ShowStatusFlags::FPS_COUNTER | (int)ShowStatusFlags::SPEED_COUNTER)) == ((int)ShowStatusFlags::FPS_COUNTER | (int)ShowStatusFlags::SPEED_COUNTER)) {
+ 		// Both at the same time gets a shorter formulation.
+-		w.F("%0.0f/%0.0f (%0.1f%%)", actual_fps, fps, vps / ((g_Config.iDisplayRefreshRate / 60.0f * 59.94f) / 100.0f));
++		w.F(getenv("KOALA_CONTROL_DIR") ? "FPS %.0f/%.0f | Speed %.1f%%" : "%0.0f/%0.0f (%0.1f%%)",
++			actual_fps, fps, vps / ((g_Config.iDisplayRefreshRate / 60.0f * 59.94f) / 100.0f));
+ 	} else {
+ 		if (g_Config.iShowStatusFlags & (int)ShowStatusFlags::FPS_COUNTER) {
+ 			w.F("FPS: %0.1f", actual_fps);
+@@ -484,6 +488,14 @@ void DrawFPS(UIContext *ctx, const Bounds &bounds) {
+ 			w.F("Speed: %0.1f%%", vps / (59.94f / 100.0f));
+ 		}
+ 	}
++	if (getenv("KOALA_CONTROL_DIR") && (g_Config.iShowStatusFlags & 16)) {
++		static double nextTiming = 0;
++		static KoalaMetrics::Timing timing;
++		if (time_now_d() >= nextTiming) { timing = KoalaMetrics::FrameTiming(); nextTiming = time_now_d() + 0.25; }
++		w.F("\nVBlank %.1f ms | P95 %.1f ms\nRender %d x %d", timing.mean, timing.p95,
++			480 * g_Config.iInternalResolution, 272 * g_Config.iInternalResolution);
++	}
++
+ 	if (System_GetPropertyBool(SYSPROP_CAN_READ_BATTERY_PERCENTAGE)) {
+ 		if (g_Config.iShowStatusFlags & (int)ShowStatusFlags::BATTERY_PERCENT) {
+ 			const int percentage = System_GetPropertyInt(SYSPROP_BATTERY_PERCENTAGE);
+diff --git a/UI/NativeApp.cpp b/UI/NativeApp.cpp
+index 4a26924..822f278 100644
+--- a/UI/NativeApp.cpp
++++ b/UI/NativeApp.cpp
+@@ -465,7 +465,10 @@ void NativeInit(int argc, const char *argv[], const char *savegame_dir, const ch
+ 	g_Config.memStickDirectory = DarwinFileSystemServices::appropriateMemoryStickDirectoryToUse();
+ 	g_Config.flash0Directory = Path(external_dir) / "flash0";
+ #elif PPSSPP_PLATFORM(MAC)
+-	g_Config.memStickDirectory = DarwinFileSystemServices::appropriateMemoryStickDirectoryToUse();
++	if (const char *dir = getenv("KOALA_DATA_DIR"))
++		g_Config.memStickDirectory = Path(dir) / "memstick";
++	else
++		g_Config.memStickDirectory = DarwinFileSystemServices::appropriateMemoryStickDirectoryToUse();
+ 	g_Config.flash0Directory = Path(external_dir) / "flash0";
+ #elif PPSSPP_PLATFORM(SWITCH)
+ 	g_Config.memStickDirectory = g_Config.internalDataDirectory / "config/ppsspp";
+@@ -494,6 +497,9 @@ void NativeInit(int argc, const char *argv[], const char *savegame_dir, const ch
+ 		g_Config.currentDirectory = g_Config.defaultCurrentDirectory;
+ 	}
+ 
++#if PPSSPP_PLATFORM(MAC)
++	if (const char *dir = getenv("KOALA_CACHE_DIR"); dir && dir[0] == '/') cache_dir = dir;
++#endif
+ 	if (cache_dir && strlen(cache_dir)) {
+ 		g_Config.appCacheDirectory = Path(cache_dir);
+ 		DiskCachingFileLoaderCache::SetCacheDir(g_Config.appCacheDirectory);
+@@ -976,7 +982,11 @@ void CallbackPostRender(UIContext *dc, void *userdata) {
+ 
+ static void SendMouseDeltaAxis();
+ 
++// Local macOS frontend IPC and performance telemetry.
++#include "KoalaNativeBridge.h"
++
+ void NativeFrame(GraphicsContext *graphicsContext) {
++	KoalaNative::Tick();
+ 	PROFILE_END_FRAME();
+ 
+ 	if (System_GetPropertyInt(SYSPROP_DEVICE_TYPE) == DEVICE_TYPE_DESKTOP) {

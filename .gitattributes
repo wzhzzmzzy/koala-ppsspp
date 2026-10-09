@@ -1,0 +1,6 @@
+*.zip binary
+*.png binary
+*.icns binary
+# Preserve upstream license text and patch context byte-for-byte.
+licenses/* -whitespace
+patches/*.patch -whitespace

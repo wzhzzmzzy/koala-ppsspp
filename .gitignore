@@ -1,0 +1,17 @@
+# Rebuildable outputs and local test data.
+.DS_Store
+/output/
+/vendor/
+/data/
+/dist/*
+!/dist/Koala-PSP-0.4.1-macOS-arm64.zip
+!/dist/SHA256SUMS
+__pycache__/
+*.py[cod]
+*.iso
+*.cso
+*.chd
+*.pbp
+*.ppst
+.env
+.env.*
