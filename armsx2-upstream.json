@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/ARMSX2/ARMSX2.git",
+  "ref": "nightly-20261008",
+  "revision": "b1f3196b9ea6aa4e89907b02dffd63b784d13ed2",
+  "asset": "ARMSX2-nightly-20261008-b1f3196b9e-macOS-arm64.tar.xz",
+  "url": "https://github.com/ARMSX2/ARMSX2/releases/download/nightly-20261008/ARMSX2-nightly-20261008-b1f3196b9e-macOS-arm64.tar.xz",
+  "sha256": "653e1848e6ad9ca33cfd1e34bf59e2e5406e90a2179fb5975777d1cd651ed03b",
+  "bundle": "armsx2-macos-arm64-sha[b1f3196b9e].app",
+  "executable": "Contents/MacOS/ARMSX2",
+  "integration": "unmodified official native ARM64 macOS build; Qt/C++, Metal; no web runtime"
+}

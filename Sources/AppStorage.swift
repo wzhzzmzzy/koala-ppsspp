@@ -1,6 +1,13 @@
 import Foundation
 import Darwin
 
+enum GamePlatform: String, Codable, CaseIterable, Identifiable {
+    case psp, ps2
+    var id: String { rawValue }
+    var title: String { rawValue.uppercased() }
+    var extensions: [String] { self == .psp ? ["iso", "cso", "chd", "pbp", "elf"] : ["iso", "chd", "bin", "mdf", "cso", "gz", "elf"] }
+}
+
 struct Game: Codable, Identifiable, Hashable {
     var id: String
     var path: String
@@ -8,12 +15,29 @@ struct Game: Codable, Identifiable, Hashable {
     var bytes: Int64
     var autoState: String?
     var lastPlayed: Date?
+    // Old libraries have no platform field and remain PSP libraries.
+    var platform: GamePlatform = .psp
+    enum CodingKeys: String, CodingKey { case id, path, title, bytes, autoState, lastPlayed, platform }
+    init(id: String, path: String, title: String, bytes: Int64, autoState: String? = nil,
+         lastPlayed: Date? = nil, platform: GamePlatform = .psp) {
+        self.id = id; self.path = path; self.title = title; self.bytes = bytes
+        self.autoState = autoState; self.lastPlayed = lastPlayed; self.platform = platform
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id); path = try c.decode(String.self, forKey: .path)
+        title = try c.decode(String.self, forKey: .title); bytes = try c.decode(Int64.self, forKey: .bytes)
+        autoState = try c.decodeIfPresent(String.self, forKey: .autoState)
+        lastPlayed = try c.decodeIfPresent(Date.self, forKey: .lastPlayed)
+        platform = try c.decodeIfPresent(GamePlatform.self, forKey: .platform) ?? .psp
+    }
 }
 
 struct LibraryState: Codable, Equatable {
     var selectedGameID: String?
     var lastPlayedGameID: String?
     var lastPlayedAt: Date?
+    var platform: GamePlatform?
 }
 
 struct AppPaths {

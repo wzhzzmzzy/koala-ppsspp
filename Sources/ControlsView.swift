@@ -22,12 +22,12 @@ struct ControlsView: View {
             Divider()
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("在模拟器里修改按键后，这里的对应关系会自动更新。").font(.callout)
+                    Text(model.isPS2 ? "读取 ARMSX2 保存的全局配置；专属覆盖和不常见按键请查看引擎设置。" : "在模拟器里修改按键后，这里的对应关系会自动更新。").font(.callout)
                     Text("点击图中按键查看完整绑定；手柄标记只切换图示，不会修改模拟器配置。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("在模拟器中改键…") { model.editMappings() }.disabled(!model.ready || model.pending)
+                Button("在模拟器中改键…") { model.editMappings() }.disabled((!model.isPS2 && !model.ready) || model.pending)
                 Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
             }
         }.padding(26).frame(width: 952, height: 806)
@@ -49,7 +49,10 @@ struct ControlsView: View {
     var keyboard: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 7) {
-                HStack { key("Esc", width: 74); Spacer(); Text("橙色按键控制 PSP").font(.caption).foregroundStyle(.secondary) }
+                HStack { key("Esc", width: 74); Spacer(); Text("橙色按键控制 \(model.platform.title)").font(.caption).foregroundStyle(.secondary) }
+                if model.isPS2 {
+                    HStack(spacing: 6) { ForEach(["1","2","3","4","5","6","7","8","9","0"], id: \.self) { key($0) }; key("Backspace", width: 110) }
+                }
                 HStack(alignment: .bottom, spacing: 24) {
                     VStack(alignment: .leading, spacing: 7) {
                         HStack(spacing: 6) { ForEach(["Q","W","E","R","T","Y","U","I","O","P"], id: \.self) { key($0) } }
@@ -84,11 +87,11 @@ struct ControlsView: View {
             }
             ControllerDiagram(snapshot: model.mappings, device: device, playStation: playStation, selection: $selectedPart)
             mappingDetails
-            HStack {
+            if !model.isPS2 { HStack {
                 Button("为手柄 1 补齐 L/R 映射") { model.command("bind-shoulders") }.disabled(!model.ready || model.pending)
                 Text(model.pending ? "正在更新…" : "保留已有映射；未绑定的肩键会在添加后自动更新标注。").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-            }
+            } }
         }
         .onChange(of: model.mappings?.padDevices) { _, ids in if let ids, !ids.contains(device) { device = ids.first ?? 10 } }
     }
@@ -109,7 +112,7 @@ struct ControlsView: View {
                                 .font(.callout).fixedSize(horizontal: false, vertical: true)
                         }
                     } else { Text("等待读取配置，启动游戏后可显示当前生效的映射。").foregroundStyle(.secondary) }
-                    if selectedPart == .rightStick { Text("PSP 没有原生右摇杆，但可在模拟器中绑定其它动作。").font(.caption).foregroundStyle(.secondary) }
+                    if selectedPart == .rightStick && !model.isPS2 { Text("PSP 没有原生右摇杆，但可在模拟器中绑定其它动作。").font(.caption).foregroundStyle(.secondary) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
         }.padding(14).frame(height: 86).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))

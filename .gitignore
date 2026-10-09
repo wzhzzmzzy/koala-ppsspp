@@ -6,6 +6,7 @@
 /dist/*
 !/dist/Koala-PSP-0.4.1-macOS-arm64.zip
 !/dist/Koala-PSP-0.4.2-macOS-arm64.zip
+!/dist/Koala-PSP-0.5.0-macOS-arm64.zip
 !/dist/SHA256SUMS
 __pycache__/
 *.py[cod]
@@ -16,3 +17,9 @@ __pycache__/
 *.ppst
 .env
 .env.*
+
+*.ps2
+*.p2s
+*.nvm
+*.rom1
+*.rom2

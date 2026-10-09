@@ -19,6 +19,7 @@ struct MappedAction: Codable, Equatable {
 struct MappingSnapshot: Codable, Equatable {
     var generation: Int
     var actions: [MappedAction]
+    var platform: String? = nil
     var padDevices: [Int] {
         let ids = Set(actions.flatMap(\.bindings).flatMap { $0 }.map(\.device).filter { (10...19).contains($0) })
         return ids.isEmpty ? [10] : ids.sorted()
@@ -33,8 +34,8 @@ struct MappingSnapshot: Codable, Equatable {
         let matches = matches(codes: codes, device: device)
         guard !matches.isEmpty else { return "未绑定" }
         let names = Set(matches.map { $0.action.name })
-        if codes == PadPart.leftStick.codes && names == Set(["An.Up","An.Down","An.Left","An.Right"]) && matches.allSatisfy({ $0.binding.count == 1 }) { return "PSP 摇杆" }
-        if codes == PadPart.dpad.codes && names == Set(["Up","Down","Left","Right"]) && matches.allSatisfy({ $0.binding.count == 1 }) { return "PSP 十字键" }
+        if codes == PadPart.leftStick.codes && names == Set(["An.Up","An.Down","An.Left","An.Right"]) && matches.allSatisfy({ $0.binding.count == 1 }) { return platform == "ps2" ? "PS2 左摇杆" : "PSP 摇杆" }
+        if codes == PadPart.dpad.codes && names == Set(["Up","Down","Left","Right"]) && matches.allSatisfy({ $0.binding.count == 1 }) { return platform == "ps2" ? "PS2 十字键" : "PSP 十字键" }
         let labels = Array(Set(matches.map { $0.action.label + ($0.binding.count > 1 ? "（组合）" : "") })).sorted()
         return labels.joined(separator: " / ")
     }
@@ -109,8 +110,9 @@ enum PadPart: String, CaseIterable, Identifiable {
         return "设备\(input.device) / 按键 #\(input.code)"
     }
     static let keyboardNames: [Int:String] = {
-        var names = [19:"↑",20:"↓",21:"←",22:"→",62:"Space",66:"Return",111:"Esc",59:"左 Shift",60:"右 Shift",61:"Tab"]
+        var names = [67:"Backspace",19:"↑",20:"↓",21:"←",22:"→",62:"Space",66:"Return",111:"Esc",59:"左 Shift",60:"右 Shift",61:"Tab"]
         for (index, letter) in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".enumerated() { names[29+index] = String(letter) }
+        for (index, digit) in "0123456789".enumerated() { names[7+index] = String(digit) }
         return names
     }()
     static func keyboardCode(_ name: String) -> Int? { keyboardNames.first { $0.value == name }?.key }

@@ -12,9 +12,11 @@ repo = Path(os.environ.get('PPSSPP_SOURCE_DIR', str(root/'vendor/ppsspp'))).expa
 (root/'output').mkdir(exist_ok=True)
 if not (repo/'build/PPSSPPSDL.app/Contents/MacOS/PPSSPPSDL').is_file():
     raise SystemExit('Build the PPSSPPSDL target successfully before packaging.')
-version = '0.4.2'
+version = '0.5.0'
 app = root / f'dist/{version}/Koala PSP.app'
 contents = app / 'Contents'
+ps2_manifest = json.loads((root/'armsx2-upstream.json').read_text())
+subprocess.run(['python3', str(root/'scripts/prepare-ps2.py')], check=True)
 for name in ['MacOS', 'Resources/Licenses', 'Helpers']:
     (contents / name).mkdir(parents=True, exist_ok=True)
 
@@ -58,7 +60,20 @@ while queue:
         relative = ('@executable_path/../Frameworks/' if target == binary else '@loader_path/') + source.name
         subprocess.run(['install_name_tool', '-change', dependency, relative, str(target)], check=True)
 
-shutil.copy2(repo/'LICENSE.TXT', contents/'Resources/Licenses/PPSSPP-GPL.txt')
+ps2_engine = contents/'Helpers/ARMSX2.app'
+if ps2_engine.exists():
+    shutil.rmtree(ps2_engine)
+shutil.copytree(root/'vendor/armsx2'/('verified-' + ps2_manifest['sha256'][:16])/ps2_manifest['bundle'], ps2_engine, symlinks=True)
+shutil.copy2(root/'Assets/ARMSX2-defaults.ini', contents/'Resources/ARMSX2-defaults.ini')
+shutil.copy2(root/'licenses/ARMSX2-GPLv3.txt', contents/'Resources/Licenses/ARMSX2-GPLv3.txt')
+shutil.copy2(root/'armsx2-upstream.json', contents/'Resources/armsx2-upstream.json')
+(contents/'Resources/Licenses/ARMSX2-SOURCE.txt').write_text(
+    'ARMSX2 official unmodified ARM64 build, GPL-3.0-or-later.\n'
+    'Corresponding source: https://github.com/ARMSX2/ARMSX2/tree/' + ps2_manifest['revision'] + '\n'
+    'Source archive: https://github.com/ARMSX2/ARMSX2/archive/' + ps2_manifest['revision'] + '.tar.gz\n'
+    'Build recipe: .github/workflows/macos_build.yml at the same revision.\n'
+    'Qt / SDL and other dependency notices are in the engine Resources directory.\n')
+shutil.copy2(repo/'LICENSE.TXT' , contents/'Resources/Licenses/PPSSPP-GPL.txt')
 subprocess.run(['xcrun','swiftc','-target','arm64-apple-macosx14.0',str(root/'scripts/make-icon.swift'),
                 '-o',str(root/'output/make-icon'),'-module-cache-path',str(root/'output/swift-module-cache')], check=True)
 subprocess.run([str(root/'output/make-icon'), str(root/'Assets/AppIconParts')], check=True)
@@ -77,10 +92,10 @@ shutil.copy2(root/'Assets/AppIconParts/icon-256.png',engine/'Contents/Resources/
 plist = {
     'CFBundleExecutable': 'KoalaPSP', 'CFBundleIdentifier': 'local.koala.psp.native',
     'CFBundleName': 'Koala PSP', 'CFBundleDisplayName': 'Koala PSP', 'CFBundlePackageType': 'APPL',
-    'CFBundleShortVersionString': version, 'CFBundleVersion': '6', 'LSMinimumSystemVersion': '14.0',
+    'CFBundleShortVersionString': version, 'CFBundleVersion': '7', 'LSMinimumSystemVersion': '14.0',
     'CFBundleIconFile': 'AppIcon',
     'NSHighResolutionCapable': True,
-    'NSHumanReadableCopyright': 'Koala PSP native prototype; PPSSPP contributors, GPL-2.0-or-later',
+    'NSHumanReadableCopyright': 'Koala native launcher; PPSSPP GPL-2.0-or-later; ARMSX2 GPL-3.0-or-later',
 }
 (contents/'Info.plist').write_bytes(plistlib.dumps(plist))
 engine_plist = engine/'Contents/Info.plist'
@@ -89,6 +104,7 @@ value.update(CFBundleIdentifier='local.koala.psp.native.engine', CFBundleName='K
              CFBundleShortVersionString='1.20.4', CFBundleVersion='1.20.4', CFBundleIconFile='AppIcon', LSMinimumSystemVersion='14.0')
 engine_plist.write_bytes(plistlib.dumps(value))
 subprocess.run(['codesign', '--force', '--deep', '--sign', '-', '--entitlements', str(repo/'macOS/Entitlements.plist'), str(engine)], check=True)
+subprocess.run(['codesign', '--verify', '--deep', '--strict', str(ps2_engine)], check=True)
 subprocess.run(['codesign', '--force', '--sign', '-', str(app)], check=True)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
 record = {
@@ -96,7 +112,7 @@ record = {
     'engine': 'PPSSPP v1.20.4', 'revision': subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip(),
     'graphics': 'Vulkan through MoltenVK to Metal', 'relocatedLibraries': copied,
     'codeSigning': 'local ad-hoc; not notarized',
-    'webRuntime': False,
+    'webRuntime': False, 'ps2': ps2_manifest,
     'minimumMacOS':'14.0', 'icon':str(icon),
 }
 archive = root/f'dist/Koala-PSP-{version}-macOS-arm64.zip'

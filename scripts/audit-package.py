@@ -11,7 +11,7 @@ root = Path(__file__).resolve().parents[1]
 build = json.loads((root/'output/build.json').read_text())
 app = Path(build['app'])
 engine = app/'Contents/Helpers/PPSSPPSDL.app'
-frameworks = [app/'Contents/Frameworks', engine/'Contents/Frameworks']
+ps2 = app/'Contents/Helpers/ARMSX2.app'
 magic = {b'\xcf\xfa\xed\xfe',b'\xce\xfa\xed\xfe',b'\xfe\xed\xfa\xcf',b'\xca\xfe\xba\xbe',b'\xbe\xba\xfe\xca'}
 records = []
 for binary in sorted(app.rglob('*')):
@@ -20,8 +20,14 @@ for binary in sorted(app.rglob('*')):
         if f.read(4) not in magic: continue
     architectures = subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip().split()
     assert 'arm64' in architectures, binary
-    executable = engine/'Contents/MacOS' if binary.is_relative_to(engine) else app/'Contents/MacOS'
+    owner = ps2 if binary.is_relative_to(ps2) else engine if binary.is_relative_to(engine) else app
+    executable = owner/'Contents/MacOS'
     commands = subprocess.check_output(['otool','-arch','arm64','-l',str(binary)],text=True)
+    # LC_ID_DYLIB is a library's own install-name, not a required dependency.
+    own_ids = set()
+    for block in re.split(r'^Load command ',commands,flags=re.M):
+        if re.search(r'cmd LC_ID_DYLIB\b',block):
+            own_ids.update(re.findall(r'^\s+name (.+) \(offset \d+\)$',block,re.M))
     versions = []
     for block in re.split(r'^Load command ',commands,flags=re.M):
         if re.search(r'cmd LC_BUILD_VERSION\b',block):
@@ -34,11 +40,11 @@ for binary in sorted(app.rglob('*')):
     resolved=[]
     for line in dependencies:
         dependency = line.strip().split(' (',1)[0]
-        if not dependency or dependency.endswith(':'): continue
+        if not dependency or dependency.endswith(':') or dependency in own_ids: continue
         if dependency.startswith(('/System/Library/','/usr/lib/')): continue
         if dependency.startswith('@rpath/'):
             tail = dependency[len('@rpath/'):]
-            candidates = [base/tail for base in frameworks] + [binary.parent/tail]
+            candidates = [owner/'Contents/Frameworks'/tail, binary.parent/tail]
         elif dependency.startswith('@loader_path/'):
             candidates = [binary.parent/dependency[len('@loader_path/'):]]
         elif dependency.startswith('@executable_path/'):
@@ -72,8 +78,21 @@ with tempfile.TemporaryDirectory(prefix='koala-portability-') as directory:
     second=json.loads(subprocess.check_output([str(executable),'--storage-report'],env=env,text=True,cwd=scratch))
     assert second['scale']==3 and second['muted'] is True
     assert first['data'].startswith(str(scratch)) and first['state'].startswith(str(scratch))
+    ps2_report=json.loads(subprocess.check_output([str(executable),'--ps2-report'],env=env,text=True,cwd=scratch))
+    assert ps2_report['enginePresent'] and not ps2_report['biosPresent'] and ps2_report['missingBIOSRejected']
+    assert ps2_report['renderer']=='17' and ps2_report['inputBindingCount']==24
+    assert Path(ps2_report['data']).is_relative_to(Path(first['data']))
+    assert Path(ps2_report['config']).is_relative_to(Path(first['config']))
+    assert Path(ps2_report['cache']).is_relative_to(Path(first['cache']))
+    assert (Path(ps2_report['data'])/'inis').resolve()==Path(ps2_report['config']).resolve()
+    env['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM']='1'
+    # -testconfig exits before MainWindow creation or emulation starts.
+    subprocess.run([ps2_report['executable'],*ps2_report['checkArguments']],env=env,cwd=scratch,
+                   stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,timeout=30)
+    third=json.loads(subprocess.check_output([str(executable),'--storage-report'],env=env,text=True,cwd=scratch))
+    assert third['scale']==3 and third['muted'] is True
 report={'pass':True,'app':str(app),'macho':records,'zip_relocation':'signature and headless native startup passed',
         'preference_reopen':'passed','otherPhysicalMac':'not tested','Gatekeeper':'local ad-hoc signature, not Developer ID notarized',
-        'uiOpened':False,'fullscreenTested':False}
+        'ps2_relocated_config_check':'passed; no BIOS/ROM; no emulation', 'uiOpened':False,'fullscreenTested':False}
 (root/'output/package-audit.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))

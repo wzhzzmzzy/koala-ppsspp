@@ -36,11 +36,23 @@ import SwiftUI
         }.padding(.vertical, 18).background(.white)
         panels.append(("controller-reference-comparison", AnyView(comparison)))
     }
+    let previewPS2 = CommandLine.arguments.contains("--ps2")
+    if previewPS2 {
+        model.platform = .ps2; model.refreshPS2(); model.refreshMappings()
+        panels = [
+            ("platform-selector", AnyView(PlayerView(model: model).platformSelector.frame(width: 240))),
+            ("ps2-library", AnyView(PlayerView(model: model).frame(width: 1180, height: 860))),
+            ("ps2-settings", AnyView(PS2SettingsView(model: model))),
+            ("ps2-keyboard", AnyView(ControlsView())),
+            ("ps2-controller", AnyView(ControlsView(page: 1)))
+        ]
+    }
     for (name, content) in panels {
         let host = NSHostingView(rootView: content.environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
         host.frame = NSRect(origin: .zero, size: host.fittingSize)
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         host.layoutSubtreeIfNeeded()
         guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { throw CocoaError(.fileWriteUnknown) }
         host.cacheDisplay(in: host.bounds, to: bitmap)

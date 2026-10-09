@@ -26,7 +26,7 @@ struct EngineStatus: Decodable {
     var texture_filter: Int?
     var anisotropy: Int?
 }
-enum PlayerPanel: String, Identifiable { case settings, controls, diagnostics; var id: String { rawValue } }
+enum PlayerPanel: String, Identifiable { case settings, controls, diagnostics, ps2; var id: String { rawValue } }
 
 struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String }
 
@@ -34,6 +34,16 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     static let shared = PlayerModel()
     @Published var games: [Game] = []
     @Published var selection: String? { didSet { persistState() } }
+    @Published var platform: GamePlatform = .psp {
+        didSet {
+            guard platform != oldValue else { return }
+            mappings = nil; lastMappingData = nil; mappingSource = "尚未读取按键配置"
+            selection = games.first { $0.platform == platform }?.id
+            if loaded { selectLastSession() }; lastCommandMilliseconds = nil
+            refreshPS2(); persistState()
+        }
+    }
+    @Published var biosDescription = "尚未导入 BIOS"
     @Published var running = false
     @Published var status: EngineStatus?
     @Published var feedback = "选择本机游戏，开始游玩。"
@@ -64,9 +74,14 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     private var pendingAt = Date()
     private var activeID: String?
     private var logHandle: FileHandle?
+    private var ps2QuitSent = false
+    private var ps2QuitAt: Date?
     private var quitCompletion: (() -> Void)?
 
     var selected: Game? { games.first { $0.id == selection } }
+    var ps2: PS2Engine { PS2Engine(paths: store.paths) }
+    var isPS2: Bool { platform == .ps2 }
+    var visibleGames: [Game] { games.filter { $0.platform == platform } }
     var ready: Bool { running && status?.ready == true }
 
     init() {
@@ -80,12 +95,11 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             games = try store.read([Game].self, from: store.libraryURL, fallback: [])
             preferences = try store.read(PlayerPreferences.self, from: store.preferencesURL, fallback: .init())
             libraryState = try store.read(LibraryState.self, from: store.stateURL, fallback: .init())
-            if let latest = try? FileManager.default.contentsOfDirectory(at: store.paths.state.appendingPathComponent("sessions"), includingPropertiesForKeys: [.contentModificationDateKey]).sorted(by: {
-                ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) >
-                ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-            }).first { sessionRoot = latest }
+            platform = libraryState.platform ?? games.first(where: { $0.id == libraryState.selectedGameID })?.platform ?? .psp
             selection = games.contains(where: { $0.id == libraryState.selectedGameID }) ? libraryState.selectedGameID : games.first?.id
+            if selected?.platform != platform { selection = visibleGames.first?.id }
             loaded = true
+            selectLastSession(); refreshPS2()
         } catch { self.error = error.localizedDescription }
         timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
@@ -105,6 +119,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     }
     func persistState() {
         guard loaded else { return }
+        libraryState.platform = platform
         libraryState.selectedGameID = selection
         do { try store.write(libraryState, to: store.stateURL) }
         catch { self.error = "本地状态保存失败：\(error.localizedDescription)" }
@@ -112,38 +127,40 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
 
     func addFile(_ url: URL) {
         guard loaded else { return }
-        guard ["iso", "cso", "chd", "pbp", "elf"].contains(url.pathExtension.lowercased()) else {
-            error = "请选择 ISO、CSO、CHD、PBP 或 ELF 游戏文件。"; return
+        guard platform.extensions.contains(url.pathExtension.lowercased()) else {
+            error = "请选择 \(platform.title) 游戏：\(platform.extensions.joined(separator: " / "))。"; return
         }
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             guard attributes[.type] as? FileAttributeType == .typeRegular else { error = "请选择游戏文件。"; return }
-            if let existing = games.first(where: { $0.path == url.path }) { selection = existing.id; return }
+            if let existing = games.first(where: { $0.path == url.path && $0.platform == platform }) { selection = existing.id; return }
             let game = Game(id: UUID().uuidString, path: url.path, title: url.deletingPathExtension().lastPathComponent,
-                            bytes: (attributes[.size] as? NSNumber)?.int64Value ?? 0)
+                            bytes: (attributes[.size] as? NSNumber)?.int64Value ?? 0, platform: platform)
             games.append(game); selection = game.id; persistLibrary()
             feedback = "已添加游戏。原文件保留在当前位置。"
         } catch { self.error = "无法读取文件：\(error.localizedDescription)" }
     }
 
     func chooseFiles() {
+        guard !running else { return }
         let picker = NSOpenPanel()
-        picker.title = "添加 PSP 游戏"
+        picker.title = "添加 \(platform.title) 游戏"
         picker.prompt = "添加到游戏库"
         picker.allowsMultipleSelection = true
         picker.canChooseDirectories = false
-        picker.allowedContentTypes = ["iso", "cso", "chd", "pbp", "elf"].compactMap { UTType(filenameExtension: $0) }
+        picker.allowedContentTypes = platform.extensions.compactMap { UTType(filenameExtension: $0) }
         if picker.runModal() == .OK { for file in picker.urls { addFile(file) } }
     }
 
     func removeSelected() {
         guard !running, let id = selection else { return }
-        games.removeAll { $0.id == id }; selection = games.first?.id; persistLibrary()
+        games.removeAll { $0.id == id }; selection = visibleGames.first?.id; persistLibrary()
         feedback = "已从游戏库移除，原文件与存档仍保留。"
     }
 
     func start(resume: Bool = false) {
         guard loaded, !running, let game = selected else { return }
+        if game.platform == .ps2 { startPS2(.game(URL(fileURLWithPath: game.path))); return }
         guard FileManager.default.isReadableFile(atPath: game.path) else { error = "找不到游戏文件，请重新添加。"; return }
         let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/PPSSPPSDL.app/Contents/MacOS/PPSSPPSDL")
         guard FileManager.default.isExecutableFile(atPath: helper.path) else { error = "原生引擎缺失，请重新构建应用。"; return }
@@ -199,6 +216,10 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
 
     func command(_ operation: String) {
         guard running else { return }
+        if isPS2 {
+            if operation == "quit" { stopPS2() }
+            return
+        }
         guard !pending else { error = "请等待上一项操作完成。"; return }
         let id = UUID().uuidString
         do {
@@ -211,6 +232,14 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         if panel == .diagnostics { refreshLogs() }
         if panel == .controls { refreshMappings() }
         guard running else { return }
+        if isPS2 {
+            if let at = ps2QuitAt, Date().timeIntervalSince(at) > 15 {
+                ps2QuitAt = nil; pending = false
+                error = "ARMSX2 尚未退出，可能正在写入记忆卡或等待确认。请在引擎窗口检查；应用不会强制结束进程。"
+                if quitCompletion != nil { quitCompletion = nil; NSApp.reply(toApplicationShouldTerminate: false) }
+            }
+            return
+        }
         let requestURL = controlRoot.appendingPathComponent("ui-request.txt")
         if let request = try? String(contentsOf: requestURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) {
             try? FileManager.default.removeItem(at: requestURL)
@@ -246,6 +275,13 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     }
 
     func refreshMappings() {
+        if isPS2 {
+            do {
+                mappings = try PS2Mappings.snapshot(ps2.read())
+                mappingSource = "ARMSX2 已保存的全局配置 · 玩家 1；游戏专属覆盖请在引擎内查看"
+            } catch { mappings = nil; mappingSource = "PS2 按键配置尚未准备好" }
+            return
+        }
         let url = running ? controlRoot.appendingPathComponent("mappings.json") : store.paths.engineConfig.appendingPathComponent("controls.ini")
         do {
             if running {
@@ -263,7 +299,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             mappingSource = FileManager.default.fileExists(atPath: url.path) ? "读取按键配置失败：\(error.localizedDescription)" : running ? "等待模拟器按键配置…" : "尚无已保存配置 · 请先启动一次游戏"
         }
     }
-    func editMappings() { guard ready, !pending else { return }; command("mapping-ui"); focusGame() }
+    func editMappings() { if isPS2 { if running { focusGame() } else { startPS2(.settings) }; return }; guard ready, !pending else { return }; command("mapping-ui"); focusGame() }
 
     func apply(_ draft: PlayerPreferences) {
         var next = draft; next.normalize()
@@ -281,7 +317,8 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         NSApp.activate(ignoringOtherApps: true)
     }
     func refreshLogs() {
-        let url = sessionRoot.appendingPathComponent("engine.log")
+        let ps2Log = sessionRoot.appendingPathComponent("emulog.txt")
+        let url = isPS2 && FileManager.default.fileExists(atPath: ps2Log.path) ? ps2Log : sessionRoot.appendingPathComponent("engine.log")
         guard let file = try? FileHandle(forReadingFrom: url) else { logText = "尚无引擎日志。启动游戏后自动记录。"; return }
         defer { try? file.close() }
         do {
@@ -296,12 +333,18 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         for game in games { safeLog = safeLog.replacingOccurrences(of: game.path, with: "<game-file>") }
         var report: [String: Any] = ["appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "development",
             "system": ProcessInfo.processInfo.operatingSystemVersionString, "architecture": "arm64",
-            "engine": "PPSSPP 1.20.4 / Vulkan → MoltenVK → Metal", "running": running,
+            "engine": isPS2 ? "ARMSX2 \(PS2Engine.version) / native ARM64" : "PPSSPP 1.20.4 / Vulkan → MoltenVK → Metal", "running": running,
             "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(preferences)),
             "logTail": safeLog, "inputToPhotonLatency": "not measured",
-            "frameTimingDefinition": "Most recent 60 emulated VBlank intervals, including waits; not input latency",
+            "frameTimingDefinition": isPS2 ? "PS2 launcher telemetry not connected; use engine HUD; input latency not measured" : "Most recent 60 emulated VBlank intervals, including waits; not input latency",
             "exportedAt": ISO8601DateFormatter().string(from: Date())]
-        if let data = try? Data(contentsOf: controlRoot.appendingPathComponent("status.json")),
+        if isPS2 {
+            let ini = try ps2.read()
+            let options = PS2Options(ini)
+            report["preferences"] = ["scale": options.scale, "volume": options.volume, "hud": options.hud,
+                                     "renderer": ini.value("EmuCore/GS", "Renderer") ?? "unknown"] as [String: Any]
+        }
+        if !isPS2, let data = try? Data(contentsOf: controlRoot.appendingPathComponent("status.json")),
            var status = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             status.removeValue(forKey: "auto_path"); report["status"] = status
         }
@@ -317,9 +360,86 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     }
     func captureGame() { command("screenshot capture-\(Int(Date().timeIntervalSince1970)).png") }
 
+    func selectLastSession() {
+        let sessions = store.paths.state.appendingPathComponent("sessions")
+        let candidates = (try? FileManager.default.contentsOfDirectory(at: sessions, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        sessionRoot = candidates.filter { $0.lastPathComponent.hasPrefix("ps2-") == isPS2 }.max {
+            ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) <
+            ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+        } ?? (isPS2 ? ps2.logs : store.paths.state)
+    }
+    func preparePS2() throws {
+        guard let defaults = Bundle.main.url(forResource: "ARMSX2-defaults", withExtension: "ini") else {
+            throw PS2Error.invalid("PS2 默认配置缺失，请重新安装完整应用。")
+        }
+        try ps2.prepare(defaults: defaults)
+    }
+    func refreshPS2() {
+        guard loaded, isPS2 else { return }
+        do {
+            if !running { try preparePS2() }
+            biosDescription = try ps2.selectedBIOS()?.description ?? "尚未导入 BIOS"
+        } catch { biosDescription = "BIOS / 配置需要检查"; self.error = error.localizedDescription }
+    }
+    func importPS2BIOS() {
+        guard !running else { return }
+        let picker = NSOpenPanel(); picker.title = "导入自己的 PS2 BIOS"; picker.prompt = "导入 BIOS"
+        picker.message = "BIOS 是 PS2 内置的启动程序，通常是 .bin 文件。请选择提取出的主文件，应用会复制一份并保留原件。"
+        picker.canChooseDirectories = false; picker.allowsMultipleSelection = false
+        if picker.runModal() == .OK, let url = picker.url {
+            do { try preparePS2(); biosDescription = try ps2.importBIOS(url).description; feedback = "BIOS 已导入。接下来添加 PS2 游戏镜像。" }
+            catch { self.error = error.localizedDescription }
+        }
+    }
+    func startPS2(_ launch: PS2Engine.Launch) {
+        guard loaded, !running, isPS2 else { return }
+        do {
+            try preparePS2()
+            let helper = Bundle.main.bundleURL.appendingPathComponent(PS2Engine.relativeExecutable)
+            guard FileManager.default.isExecutableFile(atPath: helper.path) else { throw PS2Error.invalid("ARMSX2 引擎缺失，请重新安装完整 ZIP。") }
+            let session = store.paths.state.appendingPathComponent("sessions/ps2-\(UUID().uuidString)")
+            let args = try ps2.arguments(for: launch, log: session.appendingPathComponent("emulog.txt"))
+            try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true, attributes: [.posixPermissions:0o700])
+            let log = session.appendingPathComponent("engine.log")
+            FileManager.default.createFile(atPath: log.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: log)
+            let child = Process(); child.executableURL = helper; child.arguments = args
+            child.currentDirectoryURL = helper.deletingLastPathComponent()
+            child.standardOutput = handle; child.standardError = handle
+            child.terminationHandler = { [weak self] child in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.running = false; self.pending = false; self.process = nil; self.ps2QuitSent = false; self.ps2QuitAt = nil
+                    try? self.logHandle?.close(); self.logHandle = nil; self.refreshPS2(); self.refreshLogs()
+                    self.feedback = child.terminationStatus == 0 ? "ARMSX2 已结束。记忆卡和即时存档由引擎管理。" : "ARMSX2 退出，请查看日志。"
+                    if child.terminationStatus != 0 { self.error = "ARMSX2 已退出（\(child.terminationStatus)）。请在日志与调试中查看原因。" }
+                    self.quitCompletion?(); self.quitCompletion = nil
+                }
+            }
+            try child.run()
+            sessionRoot = session; logHandle = handle; process = child; running = true
+            status = nil; lastCommandMilliseconds = nil; needsRestart = false; ps2QuitSent = false
+            if case .game = launch, let game = selected {
+                libraryState.lastPlayedGameID = game.id; libraryState.lastPlayedAt = Date(); persistState()
+                if let i = games.firstIndex(where: { $0.id == game.id }) { games[i].lastPlayed = Date(); persistLibrary() }
+            }
+            feedback = "ARMSX2 进程已启动；启动结果与性能请查看原生引擎窗口。"
+        } catch { self.error = error.localizedDescription }
+    }
+    func stopPS2() {
+        guard running, let process else { return }
+        guard !ps2QuitSent else { error = "已请求 ARMSX2 退出。请检查引擎窗口中的写卡或确认提示。"; return }
+        // The pinned ARMSX2 SIGTERM handler queues MainWindow::requestExit(false).
+        // Send only once: a second signal is a forced exit in upstream.
+        ps2QuitSent = true; ps2QuitAt = Date(); pending = true
+        process.terminate()
+        feedback = "正在请求 ARMSX2 正常保存并退出…"
+    }
+
     func requestQuit(_ completion: @escaping () -> Void) {
         guard running else { completion(); return }
         guard !pending else { error = "请等待当前存档操作结束后退出。"; NSApp.reply(toApplicationShouldTerminate: false); return }
+        if isPS2 && ps2QuitSent { error = "ARMSX2 仍在退出，请检查引擎窗口。"; NSApp.reply(toApplicationShouldTerminate: false); return }
         quitCompletion = completion; command("quit")
     }
     func revealData() { NSWorkspace.shared.open(dataRoot) }
@@ -344,16 +464,19 @@ struct PlayerView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $model.selection) {
-                Section("PSP 游戏库") {
-                    ForEach(model.games) { game in
+                Section("\(model.platform.title) 游戏库") {
+                    ForEach(model.visibleGames) { game in
                         Label(game.title, systemImage: "gamecontroller").tag(game.id).padding(.vertical, 6)
                     }
                 }
             }
+            .safeAreaInset(edge: .top) {
+                platformSelector
+            }
             .navigationSplitViewColumnWidth(min: 210, ideal: 240)
             .safeAreaInset(edge: .bottom) {
                 Button { model.chooseFiles() } label: { Label("添加本地游戏", systemImage: "plus") }
-                    .buttonStyle(.borderless).padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                    .buttonStyle(.borderless).disabled(model.running).padding(16).frame(maxWidth: .infinity, alignment: .leading)
             }
         } detail: {
             ScrollView {
@@ -362,13 +485,14 @@ struct PlayerView: View {
                         Image(systemName: "gamecontroller.fill").font(.system(size: 58)).foregroundStyle(tint)
                             .frame(width: 118, height: 104).background(.quaternary, in: RoundedRectangle(cornerRadius: 20))
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(model.selected?.title ?? "你的掌上游戏库").font(.system(size: 26, weight: .semibold)).lineLimit(3)
-                            Text(model.selected.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) + " · 本机文件" } ?? "将 PSP 游戏添加到这里，随时继续冒险。")
+                            Text(model.selected?.title ?? "你的 \(model.platform.title) 游戏库").font(.system(size: 26, weight: .semibold)).lineLimit(3)
+                            Text(model.selected.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) + " · 本机文件" } ?? "将 \(model.platform.title) 游戏添加到这里，随时继续冒险。")
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
-                    if model.running {
+                    if model.isPS2 { PS2LibrarySection(model: model) }
+                    if model.running && !model.isPS2 {
                         HStack {
                             Button { model.focusGame() } label: { Label("回到游戏", systemImage: "play.fill") }.buttonStyle(.borderedProminent)
                             Button(model.status?.playing == false ? "继续" : "暂停") { model.command("pause") }.disabled(!model.ready || model.pending)
@@ -377,13 +501,13 @@ struct PlayerView: View {
                             Spacer()
                             Button("保存并结束") { model.command("quit") }.disabled(model.pending)
                         }
-                    } else {
+                    } else if !model.isPS2 {
                         HStack(spacing: 12) {
                             Button { model.start() } label: { Label("开始游戏", systemImage: "play.fill").padding(.horizontal, 10) }
                                 .buttonStyle(.borderedProminent).disabled(model.selected == nil)
                             Button("继续自动存档") { model.start(resume: true) }.disabled(model.selected?.autoState == nil)
                             Spacer()
-                            Button { model.present(.settings) } label: {
+                            Button { model.present(model.isPS2 ? .ps2 : .settings) } label: {
                                 Label(model.preferences.graphicsDescription, systemImage: "slider.horizontal.3")
                             }.help("渲染分辨率、视频、音频与 HUD 设置")
                         }
@@ -395,19 +519,19 @@ struct PlayerView: View {
                             metric("驻留内存（RSS）", ByteCountFormatter.string(fromByteCount: Int64(status.rss_bytes), countStyle: .memory))
                         }
                     }
-                    GroupBox {
+                    if !model.isPS2 { GroupBox {
                         VStack(spacing: 0) {
                             slot("自动存档", subtitle: "每 30 秒保存，结束游戏时再保存", slot: 0, exists: model.status?.auto_exists == true)
                             Divider().padding(.vertical, 12)
                             slot("手动存档", subtitle: "保存你想回到的时刻", slot: 1, exists: model.status?.manual_exists == true)
                         }.padding(12)
-                    } label: { Text("游戏进度").font(.headline) }
+                    } label: { Text("游戏进度").font(.headline) } }
                     GroupBox {
                         HStack(spacing: 20) {
                             Image(systemName: "keyboard").font(.system(size: 30)).foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("键盘与手柄").font(.headline)
-                                Text("查看按键位置、PSP 对应关系和常用快捷键。").foregroundStyle(.secondary)
+                                Text("查看按键位置、\(model.platform.title) 对应关系和常用快捷键。").foregroundStyle(.secondary)
                             }
                             Spacer()
                             Button("查看示意图…") { model.present(.controls) }
@@ -424,13 +548,13 @@ struct PlayerView: View {
                     Text("游戏直接读取本机文件。存档只保存在这台 Mac。").font(.caption).foregroundStyle(.tertiary)
                 }.padding(30).frame(maxWidth: 920)
             }
-            .navigationTitle("Koala PSP")
+            .navigationTitle("Koala · \(model.platform.title)")
             .toolbar {
                 ToolbarItem {
                     Button { model.chooseFiles() } label: { Label("添加游戏", systemImage: "plus").labelStyle(.titleAndIcon) }
-                        .keyboardShortcut("o").help("添加本机 ISO / CSO / CHD 等游戏文件（⌘O），保留原文件位置")
+                        .keyboardShortcut("o").disabled(model.running).help("添加本机 ISO / CSO / CHD 等游戏文件（⌘O），保留原文件位置")
                 }
-                ToolbarItem { Button { model.present(.settings) } label: { Label("设置", systemImage: "slider.horizontal.3") }.help("视频、音频与性能 HUD（⌘,）") }
+                ToolbarItem { Button { model.present(model.isPS2 ? .ps2 : .settings) } label: { Label("设置", systemImage: "slider.horizontal.3") }.help("视频、音频与性能 HUD（⌘,）") }
                 ToolbarItem { Button { model.present(.diagnostics) } label: { Label("日志与调试", systemImage: "waveform.path.ecg") } }
                 ToolbarItem {
                     Menu {
@@ -451,6 +575,7 @@ struct PlayerView: View {
         .sheet(item: $model.panel) { panel in
             switch panel {
             case .settings: PlayerSettingsView(model: model)
+            case .ps2: PS2SettingsView(model: model)
             case .controls: ControlsView()
             case .diagnostics: DiagnosticsView(model: model)
             }
@@ -458,12 +583,18 @@ struct PlayerView: View {
         .onAppear {
             guard !handledArguments else { return }; handledArguments = true
             let args = CommandLine.arguments
+            if args.contains("--ps2") { model.platform = .ps2 }
             if let i = args.firstIndex(of: "--scale"), args.indices.contains(i + 1) { model.scale = min(4, max(1, Int(args[i + 1]) ?? 1)) }
             if let i = args.firstIndex(of: "--rom"), args.indices.contains(i + 1) { model.addFile(URL(fileURLWithPath: args[i + 1])) }
             if args.contains("--play") { model.start(resume: args.contains("--resume")) }
         }
     }
 
+    var platformSelector: some View {
+        Picker("平台", selection: $model.platform) {
+            ForEach(GamePlatform.allCases) { Text($0.title).tag($0) }
+        }.pickerStyle(.segmented).padding(12).disabled(model.running)
+    }
     func metric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.caption).foregroundStyle(.secondary)
@@ -483,6 +614,14 @@ struct PlayerView: View {
 @main struct KoalaPSPApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     init() {
+        if CommandLine.arguments.contains("--platform-check") {
+            do { FileHandle.standardOutput.write(try platformIntegrationReport()); exit(0) }
+            catch { fputs("Platform check failed: \(error.localizedDescription)\n", stderr); exit(1) }
+        }
+        if CommandLine.arguments.contains("--ps2-report") {
+            do { FileHandle.standardOutput.write(try ps2StorageReport()); exit(0) }
+            catch { fputs("PS2 check failed: \(error.localizedDescription)\n", stderr); exit(1) }
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--mapping-report"), CommandLine.arguments.indices.contains(i + 1) {
             do {
                 let model = PlayerModel.shared
