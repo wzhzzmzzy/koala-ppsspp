@@ -481,16 +481,7 @@ struct PlayerView: View {
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    HStack(alignment: .center, spacing: 20) {
-                        Image(systemName: "gamecontroller.fill").font(.system(size: 58)).foregroundStyle(tint)
-                            .frame(width: 118, height: 104).background(.quaternary, in: RoundedRectangle(cornerRadius: 20))
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(model.selected?.title ?? "你的 \(model.platform.title) 游戏库").font(.system(size: 26, weight: .semibold)).lineLimit(3)
-                            Text(model.selected.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) + " · 本机文件" } ?? "将 \(model.platform.title) 游戏添加到这里，随时继续冒险。")
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
+                    libraryHeader
                     if model.isPS2 { PS2LibrarySection(model: model) }
                     if model.running && !model.isPS2 {
                         HStack {
@@ -587,6 +578,18 @@ struct PlayerView: View {
             if let i = args.firstIndex(of: "--scale"), args.indices.contains(i + 1) { model.scale = min(4, max(1, Int(args[i + 1]) ?? 1)) }
             if let i = args.firstIndex(of: "--rom"), args.indices.contains(i + 1) { model.addFile(URL(fileURLWithPath: args[i + 1])) }
             if args.contains("--play") { model.start(resume: args.contains("--resume")) }
+        }
+    }
+
+    var libraryHeader: some View {
+        HStack(alignment: .center, spacing: 20) {
+            LibraryLogo(platform: model.platform).foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(model.selected?.title ?? "你的 \(model.platform.title) 游戏库").font(.system(size: 26, weight: .semibold)).lineLimit(3)
+                Text(model.selected.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) + " · 本机文件" } ?? "将 \(model.platform.title) 游戏添加到这里，随时继续冒险。")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
         }
     }
 

@@ -12,7 +12,7 @@ repo = Path(os.environ.get('PPSSPP_SOURCE_DIR', str(root/'vendor/ppsspp'))).expa
 (root/'output').mkdir(exist_ok=True)
 if not (repo/'build/PPSSPPSDL.app/Contents/MacOS/PPSSPPSDL').is_file():
     raise SystemExit('Build the PPSSPPSDL target successfully before packaging.')
-version = '0.5.0'
+version = '0.5.1'
 app = root / f'dist/{version}/Koala PSP.app'
 contents = app / 'Contents'
 ps2_manifest = json.loads((root/'armsx2-upstream.json').read_text())
@@ -92,7 +92,7 @@ shutil.copy2(root/'Assets/AppIconParts/icon-256.png',engine/'Contents/Resources/
 plist = {
     'CFBundleExecutable': 'KoalaPSP', 'CFBundleIdentifier': 'local.koala.psp.native',
     'CFBundleName': 'Koala PSP', 'CFBundleDisplayName': 'Koala PSP', 'CFBundlePackageType': 'APPL',
-    'CFBundleShortVersionString': version, 'CFBundleVersion': '7', 'LSMinimumSystemVersion': '14.0',
+    'CFBundleShortVersionString': version, 'CFBundleVersion': '8', 'LSMinimumSystemVersion': '14.0',
     'CFBundleIconFile': 'AppIcon',
     'NSHighResolutionCapable': True,
     'NSHumanReadableCopyright': 'Koala native launcher; PPSSPP GPL-2.0-or-later; ARMSX2 GPL-3.0-or-later',

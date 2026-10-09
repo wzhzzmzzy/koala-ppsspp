@@ -4,9 +4,9 @@
 
 ## 下载与安装
 
-当前版本 **0.5.0（PS2 预览版）**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
+当前版本 **0.5.1（PS2 预览版）**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
 
-**[下载 Koala-PSP-0.5.0-macOS-arm64.zip](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.5.0-macOS-arm64.zip)** · [SHA-256](dist/SHA256SUMS)
+**[下载 Koala-PSP-0.5.1-macOS-arm64.zip](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.5.1-macOS-arm64.zip)** · [SHA-256](dist/SHA256SUMS)
 
 1. 下载 ZIP 并解压，将 `Koala PSP.app` 拖入「应用程序」。
 2. 打开应用，在左侧选择 PSP 或 PS2，点击「添加游戏」，选择本机游戏镜像。PS2 需要先在「PS2 设置」导入自己的 BIOS。
@@ -52,6 +52,10 @@ shasum -a 256 -c SHA256SUMS
 上游 `-datapath` 自动附加 `ARMSX2` 子目录，`inis` 固定在该目录下；本应用只为这个位置建立指向 XDG config 的符号链接。目录已被不同内容占用时会报错并保留原件。不要在引擎运行中手动覆盖配置。
 
 ## PSP 功能
+
+游戏库主 Logo 使用倾斜 18° 的原生矢量掌机图标，支持浅色与深色外观。
+
+![PSP 游戏库掌机 Logo](docs/images/psp-library-light.png)
 
 - 本机游戏库、开始/接续、暂停/继续、静音、保存并结束；自动与手动存档分开管理。
 - 独立视频/画质、音频、HUD 设置弹窗；运行日志、截图与诊断导出。
@@ -117,7 +121,7 @@ PS2 打包阶段运行 `scripts/prepare-ps2.py`，按 [armsx2-upstream.json](arm
 PPSSPP_SOURCE_DIR=/absolute/path/to/ppsspp bash build.sh
 ```
 
-该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.5.0/Koala PSP.app` 和 `dist/Koala-PSP-0.5.0-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
+该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.5.1/Koala PSP.app` 和 `dist/Koala-PSP-0.5.1-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
 
 目录说明：`Sources/` 为原生 UI 和桥接；`patches/` 为引擎修改；`Assets/` 为 App 图标；`scripts/` 为打包/审计/测试工具；`tests/` 为存储和映射测试。`vendor/`、`output/` 与私有测试 `data/` 均不提交。
 
@@ -142,7 +146,7 @@ python3 scripts/audit-package.py
 
 ```sh
 KOALA_DATA_DIR="$PWD/output/preview-data" \
-  'dist/0.5.0/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
+  'dist/0.5.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
 xcrun swift -module-cache-path output/swift-module-cache \
   scripts/check-controller-geometry.swift output/previews
 ```
@@ -164,9 +168,9 @@ PS2 无 BIOS 的后台检查（不会创建窗口）：
 ```sh
 xcrun swiftc scripts/check-ps2-background.swift -o output/check-ps2-background \
   -module-cache-path output/swift-module-cache
-output/check-ps2-background "$PWD/dist/0.5.0/Koala PSP.app" "$PWD/output/ps2-background-check"
+output/check-ps2-background "$PWD/dist/0.5.1/Koala PSP.app" "$PWD/output/ps2-background-check"
 KOALA_DATA_DIR="$PWD/output/ps2-preview-data" \
-  'dist/0.5.0/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
+  'dist/0.5.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
 ```
 
 ## 上游与许可

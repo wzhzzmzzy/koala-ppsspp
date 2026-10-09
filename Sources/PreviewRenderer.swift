@@ -47,8 +47,16 @@ import SwiftUI
             ("ps2-controller", AnyView(ControlsView(page: 1)))
         ]
     }
+    if CommandLine.arguments.contains("--library") {
+        panels = [
+            ("library-header", AnyView(PlayerView(model: model).libraryHeader.frame(width: 680).padding(30))),
+            ("library", AnyView(PlayerView(model: model).frame(width: 1180, height: 860)))
+        ]
+    }
+    let dark = CommandLine.arguments.contains("--dark")
+    if dark { NSApplication.shared.appearance = NSAppearance(named: .darkAqua) }
     for (name, content) in panels {
-        let host = NSHostingView(rootView: content.environment(\.colorScheme, .light).background(Color(nsColor: .windowBackgroundColor)))
+        let host = NSHostingView(rootView: content.environment(\.colorScheme, dark ? .dark : .light).background(Color(nsColor: .windowBackgroundColor)))
         host.frame = NSRect(origin: .zero, size: host.fittingSize)
         let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.contentView = host
