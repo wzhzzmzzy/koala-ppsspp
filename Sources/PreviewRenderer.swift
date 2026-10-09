@@ -4,15 +4,19 @@ import SwiftUI
 // Offscreen rendering only: no window is ordered front and no activation occurs.
 @MainActor func renderPreviews(to directory: URL) throws {
     NSApplication.shared.setActivationPolicy(.prohibited)
+    // NSColor-backed backgrounds must resolve in the same appearance as SwiftUI.
+    NSApplication.shared.appearance = NSAppearance(named: .aqua)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let model = PlayerModel.shared
     model.preferences = PlayerPreferences(scale: 3)
     model.preferences.hud = 2
+    model.refreshMappings()
     var panels: [(String, AnyView)] = [
         ("settings-video", AnyView(PlayerSettingsView(model: model))),
         ("settings-audio", AnyView(PlayerSettingsView(model: model, tab: 1))),
         ("settings-hud", AnyView(PlayerSettingsView(model: model, tab: 2))),
         ("controls-keyboard", AnyView(ControlsView())),
+        ("keyboard-layout", AnyView(ControlsView().keyboard.frame(width: 900).padding(18))),
         ("controls-gamepad", AnyView(ControlsView(page: 1))),
         ("controller-artwork", AnyView(ControllerArtwork().frame(width: 596, height: 335).background(.white))),
         ("controller-artwork-wide", AnyView(ControllerArtwork().frame(width: 800, height: 335).background(.white))),

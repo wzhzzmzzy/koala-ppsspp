@@ -4,9 +4,9 @@
 
 ## 下载与安装
 
-当前版本 **0.4.1**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
+当前版本 **0.4.2**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
 
-**[下载 Koala-PSP-0.4.1-macOS-arm64.zip](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.4.1-macOS-arm64.zip)** · [SHA-256](dist/SHA256SUMS)
+**[下载 Koala-PSP-0.4.2-macOS-arm64.zip](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.4.2-macOS-arm64.zip)** · [SHA-256](dist/SHA256SUMS)
 
 1. 下载 ZIP 并解压，将 `Koala PSP.app` 拖入「应用程序」。
 2. 打开应用，点击「添加游戏」，选择本机游戏镜像。
@@ -34,6 +34,10 @@ shasum -a 256 -c SHA256SUMS
 手柄图按固定比例原生绘制；Xbox / PlayStation 选项只改变图示文字。点击按键或标注可查看完整绑定，「在模拟器中改键」打开实际设置页。PSP 没有原生右摇杆，但可以在模拟器中为它绑定其它动作。
 
 SDL 的默认肩键编号与上游部分默认映射不同，可通过「为手柄 1 补齐 L/R 映射」添加别名，保留已有键盘和手柄绑定。实体手柄输入仍待真机验证。
+
+键盘右侧的方向键为独立倒 T 布局，↑ 位于 ↓ 正上方，下排依次为 ←、↓、→；各键的动作仍读取实际配置。
+
+![键盘与实际映射](docs/images/keyboard-layout.png)
 
 ### 画质、音频与 HUD
 
@@ -81,7 +85,7 @@ bash build.sh
 PPSSPP_SOURCE_DIR=/absolute/path/to/ppsspp bash build.sh
 ```
 
-该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.4.1/Koala PSP.app` 和 `dist/Koala-PSP-0.4.1-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
+该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.4.2/Koala PSP.app` 和 `dist/Koala-PSP-0.4.2-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
 
 目录说明：`Sources/` 为原生 UI 和桥接；`patches/` 为引擎修改；`Assets/` 为 App 图标；`scripts/` 为打包/审计/测试工具；`tests/` 为存储和映射测试。`vendor/`、`output/` 与私有测试 `data/` 均不提交。
 
@@ -103,7 +107,7 @@ python3 scripts/audit-package.py
 
 ```sh
 KOALA_DATA_DIR="$PWD/output/preview-data" \
-  'dist/0.4.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
+  'dist/0.4.2/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
 xcrun swift -module-cache-path output/swift-module-cache \
   scripts/check-controller-geometry.swift output/previews
 ```
@@ -118,7 +122,7 @@ python3 scripts/test-background.py --rom /absolute/path/game.iso --state /absolu
 
 该测试使用隐藏引擎窗口和独立状态目录，验证设置、HUD、暂停/恢复、存档、实时改键及组合键。它不会测试全屏。前台实体手柄、长期稳定性和其它 Mac 尚未验证。
 
-既有 M3 Pro 前台短时样本：同一《战神：奥林匹斯之链》第一关场景中，1× 平均约 58.9 FPS、3× 约 59.4 FPS，各采样 30 秒；存在短时掉帧，不代表通关或所有游戏的性能。后台/遮挡状态可能受 Metal 呈现等待影响。0.4.1 的图示修正没有重新执行游戏性能测试。
+既有 M3 Pro 前台短时样本：同一《战神：奥林匹斯之链》第一关场景中，1× 平均约 58.9 FPS、3× 约 59.4 FPS，各采样 30 秒；存在短时掉帧，不代表通关或所有游戏的性能。后台/遮挡状态可能受 Metal 呈现等待影响。0.4.1–0.4.2 的图示修正没有重新执行游戏性能测试。
 
 ## 上游与许可
 

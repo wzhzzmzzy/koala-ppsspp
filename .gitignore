@@ -5,6 +5,7 @@
 /data/
 /dist/*
 !/dist/Koala-PSP-0.4.1-macOS-arm64.zip
+!/dist/Koala-PSP-0.4.2-macOS-arm64.zip
 !/dist/SHA256SUMS
 __pycache__/
 *.py[cod]

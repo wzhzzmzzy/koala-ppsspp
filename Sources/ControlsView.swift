@@ -50,10 +50,22 @@ struct ControlsView: View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 7) {
                 HStack { key("Esc", width: 74); Spacer(); Text("橙色按键控制 PSP").font(.caption).foregroundStyle(.secondary) }
-                HStack(spacing: 6) { ForEach(["Q","W","E","R","T","Y","U","I","O","P"], id: \.self) { key($0) } }
-                HStack(spacing: 6) { ForEach(["A","S","D","F","G","H","J","K","L"], id: \.self) { key($0) }; key("Return", width: 74) }.padding(.leading, 16)
-                HStack(spacing: 6) { ForEach(["Z","X","C","V","B","N","M"], id: \.self) { key($0) }; Spacer(); key("↑") }.padding(.leading, 35)
-                HStack(spacing: 6) { key("Space", width: 280); Spacer(); key("←"); key("↓"); key("→") }.padding(.leading, 116)
+                HStack(alignment: .bottom, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 6) { ForEach(["Q","W","E","R","T","Y","U","I","O","P"], id: \.self) { key($0) } }
+                        HStack(spacing: 6) { ForEach(["A","S","D","F","G","H","J","K","L"], id: \.self) { key($0) }; key("Return", width: 74) }.padding(.leading, 16)
+                        HStack(spacing: 6) { ForEach(["Z","X","C","V","B","N","M"], id: \.self) { key($0) } }.padding(.leading, 35)
+                        key("Space", width: 280).padding(.leading, 116)
+                    }
+                    Spacer(minLength: 0)
+                    // Keep the inverted-T cluster together: Up is centered over
+                    // Down regardless of the widths or offsets of the letter rows.
+                    VStack(spacing: 7) {
+                        key("↑")
+                        HStack(spacing: 6) { key("←"); key("↓"); key("→") }
+                    }.fixedSize()
+                        .accessibilityElement(children: .contain).accessibilityLabel("方向键")
+                }
             }.padding(18).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 16))
             Text("橙色键帽表示当前配置中已绑定的键，悬停可查看完整动作。组合键会标为“组合”，需同时按下配置中的其它按键。")
                 .font(.callout).foregroundStyle(.secondary)

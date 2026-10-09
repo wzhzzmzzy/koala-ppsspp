@@ -12,7 +12,7 @@ repo = Path(os.environ.get('PPSSPP_SOURCE_DIR', str(root/'vendor/ppsspp'))).expa
 (root/'output').mkdir(exist_ok=True)
 if not (repo/'build/PPSSPPSDL.app/Contents/MacOS/PPSSPPSDL').is_file():
     raise SystemExit('Build the PPSSPPSDL target successfully before packaging.')
-version = '0.4.1'
+version = '0.4.2'
 app = root / f'dist/{version}/Koala PSP.app'
 contents = app / 'Contents'
 for name in ['MacOS', 'Resources/Licenses', 'Helpers']:
@@ -77,7 +77,7 @@ shutil.copy2(root/'Assets/AppIconParts/icon-256.png',engine/'Contents/Resources/
 plist = {
     'CFBundleExecutable': 'KoalaPSP', 'CFBundleIdentifier': 'local.koala.psp.native',
     'CFBundleName': 'Koala PSP', 'CFBundleDisplayName': 'Koala PSP', 'CFBundlePackageType': 'APPL',
-    'CFBundleShortVersionString': version, 'CFBundleVersion': '5', 'LSMinimumSystemVersion': '14.0',
+    'CFBundleShortVersionString': version, 'CFBundleVersion': '6', 'LSMinimumSystemVersion': '14.0',
     'CFBundleIconFile': 'AppIcon',
     'NSHighResolutionCapable': True,
     'NSHumanReadableCopyright': 'Koala PSP native prototype; PPSSPP contributors, GPL-2.0-or-later',
