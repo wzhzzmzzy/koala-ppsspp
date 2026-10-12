@@ -1,6 +1,7 @@
 import Foundation
 
 struct PlayerPreferences: Codable, Equatable {
+    var vulkanDriver: VulkanDriver = .moltenvk
     var scale = 1
     var muted = false
     var volume = 100
@@ -15,11 +16,12 @@ struct PlayerPreferences: Codable, Equatable {
 
     init(scale: Int = 1, muted: Bool = false) { self.scale = scale; self.muted = muted }
     enum CodingKeys: String, CodingKey {
-        case scale, muted, volume, audioBuffer, fillAudioGaps, vsync, textureFilter, anisotropy, smart2D, frameSkip, hud
+        case vulkanDriver, scale, muted, volume, audioBuffer, fillAudioGaps, vsync, textureFilter, anisotropy, smart2D, frameSkip, hud
     }
     init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        vulkanDriver = try c.decodeIfPresent(VulkanDriver.self, forKey: .vulkanDriver) ?? .moltenvk
         scale = try c.decodeIfPresent(Int.self, forKey: .scale) ?? scale
         muted = try c.decodeIfPresent(Bool.self, forKey: .muted) ?? muted
         volume = try c.decodeIfPresent(Int.self, forKey: .volume) ?? volume

@@ -13,6 +13,102 @@ index 53a86f5..b6a3ecf 100644
  #define _POSIX_SOURCE
  #define _LARGE_TIME_API
  #endif
+diff --git a/Common/GPU/Vulkan/VulkanContext.cpp b/Common/GPU/Vulkan/VulkanContext.cpp
+index 9b38473..e5de885 100644
+--- a/Common/GPU/Vulkan/VulkanContext.cpp
++++ b/Common/GPU/Vulkan/VulkanContext.cpp
+@@ -4,6 +4,8 @@
+ #include <cstdint>
+ #include <cstring>
+ #include <iostream>
++#include <fstream>
++#include "Common/Data/Format/JSONWriter.h"
+ 
+ #include "Common/System/System.h"
+ #include "Common/System/Display.h"
+@@ -567,6 +569,18 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
+ 	INFO_LOG(Log::G3D, "Chose physical device %d: %s", physical_device, physicalDeviceProperties_[physical_device].properties.deviceName);
+ 
+ 	vulkanDeviceApiVersion_ = physicalDeviceProperties_[physical_device].properties.apiVersion;
++	VkPhysicalDeviceDriverProperties koalaDriverProps{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
++	if (vkGetPhysicalDeviceProperties2 && vulkanDeviceApiVersion_ >= VK_API_VERSION_1_2) {
++		VkPhysicalDeviceProperties2 props{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
++		props.pNext = &koalaDriverProps;
++		vkGetPhysicalDeviceProperties2(physical_devices_[physical_device], &props);
++	}
++	const char *koalaRequested = getenv("KOALA_VULKAN_DRIVER");
++	if (koalaRequested && !strcmp(koalaRequested, "kosmickrisp") &&
++		!strstr(koalaDriverProps.driverName, "KosmicKrisp") && !strstr(koalaDriverProps.driverName, "kosmickrisp")) {
++		init_error_ = "Selected KosmicKrisp, but Vulkan enumerated a different driver. Refusing automatic fallback.";
++		return VK_ERROR_INCOMPATIBLE_DRIVER;
++	}
+ 
+ 	queue_count = 0;
+ 	vkGetPhysicalDeviceQueueFamilyProperties(physical_devices_[physical_device_], &queue_count, nullptr);
+@@ -810,6 +824,7 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
+ 	if (res != VK_SUCCESS) {
+ 		init_error_ = "Unable to create Vulkan device";
+ 		ERROR_LOG(Log::G3D, "%s", init_error_.c_str());
++		return res;
+ 	} else {
+ 		VulkanLoadDeviceFunctions(device_, extensionsLookup_, vulkanDeviceApiVersion_);
+ 	}
+@@ -870,6 +885,26 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
+ 		break;
+ 	}
+ 
++	if (koalaRequested) {
++		json::JsonWriter report;
++		report.begin();
++		report.writeString("requested", koalaRequested);
++		report.writeString("driverName", koalaDriverProps.driverName);
++		report.writeString("driverInfo", koalaDriverProps.driverInfo);
++		report.writeString("deviceName", props.deviceName);
++		report.writeString("apiVersion", StringFromFormat("%u.%u.%u", VK_VERSION_MAJOR(props.apiVersion), VK_VERSION_MINOR(props.apiVersion), VK_VERSION_PATCH(props.apiVersion)));
++		report.writeUint("driverID", koalaDriverProps.driverID);
++		report.writeBool("deviceCreated", true);
++		report.end();
++		for (const char *key : {"KOALA_CONTROL_DIR", "KOALA_LOG_DIR"}) {
++			if (const char *directory = getenv(key)) {
++				std::ofstream file(std::string(directory) + "/vulkan-driver.json");
++				file << report.str();
++			}
++		}
++		fprintf(stderr, "Koala Vulkan: requested=%s actual=%s info=%s device=%s\n", koalaRequested,
++			koalaDriverProps.driverName, koalaDriverProps.driverInfo, props.deviceName);
++	}
+ 	return res;
+ }
+ 
+diff --git a/Common/GPU/Vulkan/VulkanLoader.cpp b/Common/GPU/Vulkan/VulkanLoader.cpp
+index cb1f03b..5cea45c 100644
+--- a/Common/GPU/Vulkan/VulkanLoader.cpp
++++ b/Common/GPU/Vulkan/VulkanLoader.cpp
+@@ -20,6 +20,7 @@
+ #include <vector>
+ #include <string>
+ #include <cstring>
++#include <cstdlib>
+ 
+ #include "Core/Config.h"
+ #include "Common/Data/Format/JSONReader.h"
+@@ -364,6 +365,16 @@ static VulkanLibraryHandle VulkanLoadLibrary(std::string *errorString) {
+ 	return LoadLibrary(L"vulkan-1.dll");
+ #else
+ 	void *lib = nullptr;
++#if PPSSPP_PLATFORM(MAC)
++	const char *koalaDriver = getenv("KOALA_VULKAN_DRIVER");
++	if (koalaDriver && !strcmp(koalaDriver, "kosmickrisp")) {
++		// KosmicKrisp is an ICD, and must be loaded through the Vulkan Loader.
++		// Do not fall through to MoltenVK if this explicit experimental choice fails.
++		lib = dlopen("@executable_path/../Frameworks/KosmicKrisp/libvulkan.1.dylib", RTLD_NOW | RTLD_LOCAL);
++		if (!lib && errorString) *errorString = std::string("KosmicKrisp loader unavailable: ") + dlerror();
++		return lib;
++	}
++#endif
+ 
+ #if PPSSPP_PLATFORM(ANDROID) && PPSSPP_ARCH(ARM64)
+ 	if (!g_Config.sCustomDriver.empty() && g_Config.sCustomDriver != "Default") {
 diff --git a/Core/HW/Display.cpp b/Core/HW/Display.cpp
 index 1ac986a..c4675a4 100644
 --- a/Core/HW/Display.cpp
@@ -154,7 +250,7 @@ index bfa33bd..ff6ec40 100644
  #ifdef USING_EGL
  	if (EGL_Open(window) != 0) {
 diff --git a/SDL/SDLMain.cpp b/SDL/SDLMain.cpp
-index 6853525..b1494cf 100644
+index 6853525..0e14cd4 100644
 --- a/SDL/SDLMain.cpp
 +++ b/SDL/SDLMain.cpp
 @@ -1588,6 +1588,7 @@ int main(int argc, char *argv[]) {
@@ -165,6 +261,40 @@ index 6853525..b1494cf 100644
  #endif
  
  	if (mode & SDL_WINDOW_FULLSCREEN_DESKTOP) {
+@@ -1677,6 +1678,19 @@ int main(int argc, char *argv[]) {
+ 	GraphicsContext *graphicsContext = nullptr;
+ 	SDL_Window *window = nullptr;
+ 
++	const char *koalaDriver = getenv("KOALA_VULKAN_DRIVER");
++	const bool koalaExplicitVulkan = koalaDriver != nullptr;
++	if (koalaExplicitVulkan) {
++		g_Config.iGPUBackend = (int)GPUBackend::VULKAN;
++		if (!vulkanMayBeAvailable) {
++			fprintf(stderr, "Koala: selected Vulkan driver %s unavailable; switch the driver in playback settings. No automatic fallback.\n", koalaDriver);
++			NativeShutdown();
++			SDL_Quit();
++			glslang::FinalizeProcess();
++			return 1;
++		}
++	}
++
+ 	// Switch away from Vulkan if not available.
+ 	if (g_Config.iGPUBackend == (int)GPUBackend::VULKAN && !vulkanMayBeAvailable) {
+ 		g_Config.iGPUBackend = (int)GPUBackend::OPENGL;
+@@ -1706,6 +1720,13 @@ int main(int argc, char *argv[]) {
+ 	} else if (g_Config.iGPUBackend == (int)GPUBackend::VULKAN) {
+ 		SDLVulkanGraphicsContext *vkctx = new SDLVulkanGraphicsContext();
+ 		if (!vkctx->Init(window, x, y, w, h, mode | SDL_WINDOW_VULKAN, &error_message)) {
++			if (koalaExplicitVulkan) {
++				fprintf(stderr, "Koala: selected Vulkan driver %s failed: %s. No automatic fallback.\n", koalaDriver, error_message.c_str());
++				NativeShutdown();
++				SDL_Quit();
++				glslang::FinalizeProcess();
++				return 1;
++			}
+ 			// Let's try the fallback once per process run.
+ 
+ 			fprintf(stderr, "Vulkan init error '%s' - falling back to GL\n", error_message.c_str());
 diff --git a/SDL/SDLMain.mm b/SDL/SDLMain.mm
 index 63909bf..ac29a89 100644
 --- a/SDL/SDLMain.mm

@@ -43,6 +43,17 @@ struct PlayerSettingsView: View {
     }
     var video: some View {
         Form {
+            Section("图形驱动 · 下次启动生效") {
+                Picker("Vulkan → Metal", selection: $draft.vulkanDriver) {
+                    ForEach(VulkanDriver.allCases) { driver in
+                        Text(driver.title).tag(driver).disabled(!driver.availableOnSystem)
+                    }
+                }
+                Text(draft.vulkanDriver == .kosmickrisp
+                     ? "实验性 · 需要 macOS 26+。使用 Metal 4，兼容性与性能因游戏而异；遇到异常可切回 MoltenVK。"
+                     : "默认驱动，支持 macOS 14+。KosmicKrisp 实验选项需要 macOS 26+。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section {
                 Picker("内部渲染分辨率", selection: $draft.scale) {
                     Text("1× · 480 × 272 · PSP 原始").tag(1)
@@ -68,7 +79,7 @@ struct PlayerSettingsView: View {
                 Picker("跳帧", selection: $draft.frameSkip) {
                     Text("关闭 · 推荐").tag(0); Text("跳过 1 帧").tag(1); Text("跳过 2 帧").tag(2)
                 }
-                Text("跳帧减少绘制量，但会降低画面连贯性。后端固定为 Vulkan → Metal。以上设置下次启动游戏时生效。")
+                Text("跳帧减少绘制量，但会降低画面连贯性。以上设置下次启动游戏时生效。")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)
@@ -138,8 +149,12 @@ struct DiagnosticsView: View {
             HStack {
                 Label(model.status?.jit_active == true ? "ARM64 JIT 已启用" : "引擎未运行 / 尚未就绪", systemImage: "cpu")
                 Spacer()
-                Text(model.status.map { "\(PlayerPreferences.resolution($0.render_scale)) · RSS \(ByteCountFormatter.string(fromByteCount: Int64($0.rss_bytes), countStyle: .memory))" } ?? (model.isPS2 ? "ARMSX2 · 实时遥测尚未接入" : "Vulkan → MoltenVK → Metal"))
+                Text(model.status.map { "\(PlayerPreferences.resolution($0.render_scale)) · RSS \(ByteCountFormatter.string(fromByteCount: Int64($0.rss_bytes), countStyle: .memory))" } ?? (model.isPS2 ? "ARMSX2 · 实时遥测尚未接入" : "Vulkan → Metal"))
             }.font(.callout)
+            Text(model.driverDescription).font(.callout).textSelection(.enabled)
+            if let driver = model.driverReport {
+                Text("Vulkan \(driver.apiVersion) · \(driver.driverInfo)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
             } else {
                 Text(model.running ? "ARMSX2 进程运行中 · FPS / 帧时间请查看游戏 HUD。" : "ARMSX2 尚未运行。")
                     .font(.callout).foregroundStyle(.secondary)

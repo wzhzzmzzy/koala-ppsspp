@@ -56,6 +56,15 @@ for binary in sorted(app.rglob('*')):
         resolved.append(dependency)
     records.append({'path':str(binary.relative_to(app)),'architectures':architectures,'minimumOS':versions,'bundledDependencies':resolved})
 assert records
+optional = engine/'Contents/Frameworks/KosmicKrisp'
+assert (optional/'libvulkan.1.dylib').is_file()
+assert (optional/'libkosmickrisp.dylib').is_file()
+icd = json.loads((optional/'kosmickrisp_icd.json').read_text())
+assert icd['ICD']['library_path'] == './libkosmickrisp.dylib'
+# Optional runtime loading must not raise the main app's deployment target.
+for record in records:
+    if '/KosmicKrisp/' not in record['path']:
+        assert not any('KosmicKrisp/' in dep for dep in record['bundledDependencies']), record
 subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
 for bundle in [app,engine]:
     info=plistlib.loads((bundle/'Contents/Info.plist').read_bytes())
@@ -78,6 +87,19 @@ with tempfile.TemporaryDirectory(prefix='koala-portability-') as directory:
     second=json.loads(subprocess.check_output([str(executable),'--storage-report'],env=env,text=True,cwd=scratch))
     assert second['scale']==3 and second['muted'] is True
     assert first['data'].startswith(str(scratch)) and first['state'].startswith(str(scratch))
+    launcher_preferences = Path(first['config'])/'preferences.json'
+    for driver in ['moltenvk', 'kosmickrisp']:
+        if driver == 'kosmickrisp' and int(subprocess.check_output(['sw_vers','-productVersion'],text=True).split('.')[0]) < 26: continue
+        launcher_preferences.write_text(json.dumps({'scale':3,'muted':True,'vulkanDriver':driver}))
+        launch=json.loads(subprocess.check_output([str(executable),'--vulkan-launch-report'],env=env,text=True,cwd=scratch))
+        assert launch['driver']==driver
+        assert Path(launch['environment']['SDL_VULKAN_LIBRARY']).is_relative_to(moved)
+        assert Path(launch['environment']['SDL_VULKAN_LIBRARY']).is_file()
+        if driver=='kosmickrisp':
+            assert Path(launch['environment']['VK_DRIVER_FILES']).is_relative_to(moved)
+            assert Path(launch['environment']['VK_DRIVER_FILES']).is_file()
+    launcher_preferences.write_text(json.dumps({'scale':3,'muted':True}))
+
     ps2_report=json.loads(subprocess.check_output([str(executable),'--ps2-report'],env=env,text=True,cwd=scratch))
     assert ps2_report['enginePresent'] and not ps2_report['biosPresent'] and ps2_report['missingBIOSRejected']
     assert ps2_report['renderer']=='17' and ps2_report['inputBindingCount']==24

@@ -1,0 +1,14 @@
+This application bundles the ARM64 runtime libraries from the official LunarG Vulkan SDK 1.4.363.0 (2026-09-29).
+The SDK SHA-256 and unmodified input binary hashes are pinned in vulkan-upstream.json.
+Only the macOS install names and local ad-hoc code signatures are changed; the universal loader is thinned to ARM64.
+No validation, capture, debug layers, SDK compiler tools, or Mesa OpenGL driver are bundled.
+
+KosmicKrisp / Mesa: Copyright 2025-2026 LunarG, Inc.; Copyright 2025 Google LLC; and the Mesa contributors (individual source files retain their copyright notices and SPDX identifiers).
+SDK build source: https://gitlab.freedesktop.org/aitor/mesa/-/tree/269a955c898df283fc36f4827643769068cf3d29
+Upstream project: https://gitlab.freedesktop.org/mesa/mesa
+License guide: docs/license.rst at the above SDK commit. KosmicKrisp uses MIT; the complete Mesa license-text collection is included for its shared components and exceptions. Presence of a license in this collection does not mean every Mesa component is shipped.
+
+Vulkan Loader: https://github.com/KhronosGroup/Vulkan-Loader/tree/fa218055ff4948b159f31d43f800c808a13d51df
+SPIRV-Tools and SPIRV-Headers source revisions are recorded in VULKAN-SDK-VERSIONS.txt; original license texts are included. LLVM's original license text, including the LLVM exception, is included for the Mesa compiler/CLC support (SDK build documentation references LLVM 20.1.8).
+
+Runtime requirements: Apple Silicon, macOS 26+, Metal 4. This is an optional experimental PSP backend. The application's default MoltenVK path remains compatible with macOS 14+.

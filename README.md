@@ -4,9 +4,9 @@
 
 ## 下载与安装
 
-当前版本 **0.5.1（PS2 预览版）**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
+当前实验版 **0.6.0-experimental.1（KosmicKrisp 预览）**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
 
-**[下载 Koala-PS-0.5.1-macOS-arm64.zip](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.5.1-macOS-arm64.zip)** · [SHA-256](dist/SHA256SUMS)
+**[下载实验版 ZIP](https://github.com/wzhzzmzzy/koala-ppsspp/releases/download/v0.6.0-experimental.1/Koala-PSP-0.6.0-experimental.1-macOS-arm64.zip)** · [实验版发布说明](https://github.com/wzhzzmzzy/koala-ppsspp/releases/tag/v0.6.0-experimental.1) · [SHA-256](dist/SHA256SUMS)
 
 1. 下载 ZIP 并解压，将 `Koala PSP.app` 拖入「应用程序」。
 2. 打开应用，在左侧选择 PSP 或 PS2，点击「添加游戏」，选择本机游戏镜像。PS2 需要先在「PS2 设置」导入自己的 BIOS。
@@ -20,6 +20,21 @@ ZIP 已包含完整应用、PPSSPP / ARMSX2 引擎、Qt / SDL / MoltenVK 等依�
 cd dist
 shasum -a 256 -c SHA256SUMS
 ```
+
+## KosmicKrisp 实验选项
+
+在 **PSP → 播放设置 → 视频与画质 → 图形驱动** 中选择 **KosmicKrisp · 实验性**，保存后重新启动游戏。默认仍是 MoltenVK；PS2 继续使用 ARMSX2 的 Metal 渲染器。
+
+- KosmicKrisp 仅支持 **Apple Silicon + macOS 26 或更新版本**。旧系统禁用此选项；已有设置指向不支持的驱动时会明确报错，请手动切回 MoltenVK。
+- 内置 Vulkan Loader **1.4.363** 和 KosmicKrisp **vulkan-sdk-1.4.363 / 269a955c89**，来源为 LunarG 官方 SDK **1.4.363.0**；用户无需安装 SDK。它通过 Metal 4 工作。
+- 选择属于下一次启动配置。引擎分别加载内置库、限定 ICD 搜索、清除子进程继承的驱动/层覆盖；加载失败会报错，**不会悄悄回退到 OpenGL 或另一个驱动**。
+- 存档、游戏库和键位保持共用；可重建缓存按 `~/.cache/koala-psp/vulkan/{moltenvk,kosmickrisp}/` 分开。Mesa 着色器缓存放在 KosmicKrisp 子目录。
+- 「日志与调试」显示引擎实际返回的驱动名称、版本、Vulkan 版本和设备；诊断导出包含当前偏好及实际会话的驱动记录。刚保存的新选择不会冒充正在运行的驱动。
+- 退回方法：结束游戏，把设置改回 MoltenVK，再启动；无需重装或删除存档。[0.5.1 完整旧版](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.5.1-macOS-arm64.zip) 仍保留。
+
+**验证范围：** macOS 26.2 / M3 Pro，PPSSPP 开源 cube 程序在两个驱动下均能后台渲染、截图、暂停/恢复及正常退出，截图已人工查看。无激活、无可见窗口、未测试全屏。缺失 ICD 的失败路径、偏好兼容与独立缓存、打包依赖/签名和 ZIP 移位均单独验证。用户原先的《战神》ISO 已不在原路径，本版尚未重新验证该商业游戏。没有前台 FPS 对比、长时间稳定性或第二台 Mac 的结果，**不宣称性能提升**。
+
+![KosmicKrisp 实验设置](docs/images/settings-kosmickrisp.png)
 
 ## PS2 接入范围
 
@@ -113,6 +128,8 @@ bash build.sh
 
 `build.sh` 调用 `scripts/prepare-engine.sh`，从官方仓库获取 [upstream.json](upstream.json) 固定的 PPSSPP `v1.20.4` / `fa50bb1976065c4f8b1b47af227d367fe9771555` 及子模块到 `vendor/ppsspp`；随后应用 [引擎补丁](patches/ppsspp-native.patch)，复制两个桥接头文件，构建 ARM64 引擎和原生界面，生成 `.app`、本地签名和 ZIP。
 
+KosmicKrisp 打包运行 `scripts/prepare-vulkan.py`：按 [vulkan-upstream.json](vulkan-upstream.json) 校验官方下载及已解包库的 SHA-256，通过无窗口 `copy_only=1` 方式解包到 `vendor/vulkan-sdk`，不安装系统级驱动。仅两份运行库和相对路径 ICD 进入 App；相关许可证与源码版本同时内置。当前构建此实验包使用 macOS 26+。
+
 PS2 打包阶段运行 `scripts/prepare-ps2.py`，按 [armsx2-upstream.json](armsx2-upstream.json) 下载官方 macOS 包并校验固定 SHA-256；所有内置库保留在 helper bundle 内。PS2 无需 Qt 开发工具，也不会编译官方 PS2 源码。若要自行编译，使用同提交的 `.github/workflows/macos_build.yml` 及依赖脚本。
 
 已有该固定版本的独立 PPSSPP 引擎 checkout 时，可以指定：
@@ -121,7 +138,7 @@ PS2 打包阶段运行 `scripts/prepare-ps2.py`，按 [armsx2-upstream.json](arm
 PPSSPP_SOURCE_DIR=/absolute/path/to/ppsspp bash build.sh
 ```
 
-该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.5.1/Koala PSP.app` 和 `dist/Koala-PSP-0.5.1-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
+该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.6.0-experimental.1/Koala PSP.app` 和 `dist/Koala-PSP-0.6.0-experimental.1-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
 
 目录说明：`Sources/` 为原生 UI 和桥接；`patches/` 为引擎修改；`Assets/` 为 App 图标；`scripts/` 为打包/审计/测试工具；`tests/` 为存储和映射测试。`vendor/`、`output/` 与私有测试 `data/` 均不提交。
 
@@ -129,7 +146,7 @@ PPSSPP_SOURCE_DIR=/absolute/path/to/ppsspp bash build.sh
 
 ```sh
 mkdir -p output
-xcrun swiftc -parse-as-library Sources/AppStorage.swift Sources/PlayerPreferences.swift tests/StorageTests.swift \
+xcrun swiftc -parse-as-library Sources/AppStorage.swift Sources/PlayerPreferences.swift Sources/VulkanDriver.swift tests/StorageTests.swift \
   -o output/storage-tests -module-cache-path output/swift-module-cache
 output/storage-tests
 xcrun swiftc -parse-as-library Sources/InputMapping.swift tests/MappingTests.swift \
@@ -138,6 +155,9 @@ output/mapping-tests
 xcrun swiftc -parse-as-library Sources/AppStorage.swift Sources/PS2Engine.swift Sources/PS2Mappings.swift Sources/InputMapping.swift tests/PS2Tests.swift \
   -o output/ps2-tests -module-cache-path output/swift-module-cache
 output/ps2-tests Assets/ARMSX2-defaults.ini
+xcrun swiftc -parse-as-library Sources/PlayerPreferences.swift Sources/VulkanDriver.swift tests/VulkanDriverTests.swift \
+  -o output/vulkan-driver-tests -module-cache-path output/swift-module-cache
+output/vulkan-driver-tests
 # 完成构建后，核验依赖、签名、ZIP 移位与无窗口启动。
 python3 scripts/audit-package.py
 ```
@@ -146,7 +166,7 @@ python3 scripts/audit-package.py
 
 ```sh
 KOALA_DATA_DIR="$PWD/output/preview-data" \
-  'dist/0.5.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
+  'dist/0.6.0-experimental.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
 xcrun swift -module-cache-path output/swift-module-cache \
   scripts/check-controller-geometry.swift output/previews
 ```
@@ -159,6 +179,15 @@ xcrun swiftc scripts/check-background.swift -o output/check-background \
 python3 scripts/test-background.py --rom /absolute/path/game.iso --state /absolute/path/in-game.ppst
 ```
 
+不需要商业游戏的双驱动烟雾测试（cube 来自固定 PPSSPP 子模块）：
+
+```sh
+python3 scripts/test-vulkan.py --rom vendor/ppsspp/pspautotests/demos/cube.iso
+python3 scripts/test-vulkan-failure.py
+# 有自己的游戏与匹配存档时：
+python3 scripts/test-background.py --driver kosmickrisp --rom /absolute/path/game.iso --state /absolute/path/in-game.ppst
+```
+
 以上游戏集成测试仅适用于 PSP。该测试使用隐藏引擎窗口和独立状态目录，验证设置、HUD、暂停/恢复、存档、实时改键及组合键。它不会测试全屏。前台实体手柄、长期稳定性和其它 Mac 尚未验证。
 
 既有 M3 Pro 前台短时样本：同一《战神：奥林匹斯之链》第一关场景中，1× 平均约 58.9 FPS、3× 约 59.4 FPS，各采样 30 秒；存在短时掉帧，不代表通关或所有游戏的性能。后台/遮挡状态可能受 Metal 呈现等待影响。0.4.1–0.4.2 的图示修正没有重新执行游戏性能测试。
@@ -168,9 +197,9 @@ PS2 无 BIOS 的后台检查（不会创建窗口）：
 ```sh
 xcrun swiftc scripts/check-ps2-background.swift -o output/check-ps2-background \
   -module-cache-path output/swift-module-cache
-output/check-ps2-background "$PWD/dist/0.5.1/Koala PSP.app" "$PWD/output/ps2-background-check"
+output/check-ps2-background "$PWD/dist/0.6.0-experimental.1/Koala PSP.app" "$PWD/output/ps2-background-check"
 KOALA_DATA_DIR="$PWD/output/ps2-preview-data" \
-  'dist/0.5.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
+  'dist/0.6.0-experimental.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
 ```
 
 ## 上游与许可

@@ -46,6 +46,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     @Published var biosDescription = "尚未导入 BIOS"
     @Published var running = false
     @Published var status: EngineStatus?
+    @Published var driverReport: VulkanDriverReport?
     @Published var feedback = "选择本机游戏，开始游玩。"
     @Published var error: String?
     @Published var preferences = PlayerPreferences()
@@ -82,6 +83,10 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     var ps2: PS2Engine { PS2Engine(paths: store.paths) }
     var isPS2: Bool { platform == .ps2 }
     var visibleGames: [Game] { games.filter { $0.platform == platform } }
+    var driverDescription: String {
+        if let report = driverReport { return "\(running ? "实际驱动" : "上次会话驱动")：\(report.driverName) · \(report.deviceName)" }
+        return "下次启动：\(preferences.vulkanDriver.name) · 实际驱动尚未确认"
+    }
     var ready: Bool { running && status?.ready == true }
 
     init() {
@@ -184,7 +189,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             var environment = ProcessInfo.processInfo.environment
             environment["KOALA_DATA_DIR"] = dataRoot.path
             environment["KOALA_CONFIG_DIR"] = store.paths.engineConfig.path
-            environment["KOALA_CACHE_DIR"] = store.paths.cache.path
+            environment = try preferences.vulkanDriver.environment(base: environment, app: Bundle.main.bundleURL, cache: store.paths.cache)
             environment["KOALA_LOG_DIR"] = sessionRoot.path
             environment["KOALA_CONTROL_DIR"] = controlRoot.path
             child.environment = environment
@@ -204,6 +209,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
                     self.quitCompletion?(); self.quitCompletion = nil
                 }
             }
+            driverReport = nil
             try child.run()
             mappings = nil; lastMappingData = nil
             process = child; running = true; status = nil; activeID = game.id; needsRestart = false
@@ -240,6 +246,8 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             }
             return
         }
+        if let data = try? Data(contentsOf: sessionRoot.appendingPathComponent("vulkan-driver.json")),
+           let report = try? JSONDecoder().decode(VulkanDriverReport.self, from: data) { driverReport = report }
         let requestURL = controlRoot.appendingPathComponent("ui-request.txt")
         if let request = try? String(contentsOf: requestURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) {
             try? FileManager.default.removeItem(at: requestURL)
@@ -331,9 +339,9 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         refreshLogs()
         var safeLog = logText.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
         for game in games { safeLog = safeLog.replacingOccurrences(of: game.path, with: "<game-file>") }
-        var report: [String: Any] = ["appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "development",
+        var report: [String: Any] = ["appVersion": Bundle.main.infoDictionary?["KoalaReleaseVersion"] ?? "development",
             "system": ProcessInfo.processInfo.operatingSystemVersionString, "architecture": "arm64",
-            "engine": isPS2 ? "ARMSX2 \(PS2Engine.version) / native ARM64" : "PPSSPP 1.20.4 / Vulkan → MoltenVK → Metal", "running": running,
+            "engine": isPS2 ? "ARMSX2 \(PS2Engine.version) / native ARM64" : "PPSSPP 1.20.4 / Vulkan → Metal", "running": running,
             "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(preferences)),
             "logTail": safeLog, "inputToPhotonLatency": "not measured",
             "frameTimingDefinition": isPS2 ? "PS2 launcher telemetry not connected; use engine HUD; input latency not measured" : "Most recent 60 emulated VBlank intervals, including waits; not input latency",
@@ -343,6 +351,10 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             let options = PS2Options(ini)
             report["preferences"] = ["scale": options.scale, "volume": options.volume, "hud": options.hud,
                                      "renderer": ini.value("EmuCore/GS", "Renderer") ?? "unknown"] as [String: Any]
+        }
+        if !isPS2 {
+            report["requestedVulkanDriver"] = preferences.vulkanDriver.rawValue
+            if let driverReport { report["vulkanDriver"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(driverReport)) }
         }
         if !isPS2, let data = try? Data(contentsOf: controlRoot.appendingPathComponent("status.json")),
            var status = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -367,6 +379,10 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) <
             ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
         } ?? (isPS2 ? ps2.logs : store.paths.state)
+        driverReport = nil
+        if !isPS2, let data = try? Data(contentsOf: sessionRoot.appendingPathComponent("vulkan-driver.json")) {
+            driverReport = try? JSONDecoder().decode(VulkanDriverReport.self, from: data)
+        }
     }
     func preparePS2() throws {
         guard let defaults = Bundle.main.url(forResource: "ARMSX2-defaults", withExtension: "ini") else {
@@ -639,6 +655,16 @@ struct PlayerView: View {
         if let i = CommandLine.arguments.firstIndex(of: "--render-previews"), CommandLine.arguments.indices.contains(i + 1) {
             do { try renderPreviews(to: URL(fileURLWithPath: CommandLine.arguments[i + 1])); exit(0) }
             catch { fputs("Preview failed: \(error)\n", stderr); exit(1) }
+        }
+        if CommandLine.arguments.contains("--vulkan-launch-report") {
+            do {
+                let store = LocalStore(paths: AppPaths())
+                let p = try store.read(PlayerPreferences.self, from: store.preferencesURL, fallback: .init())
+                let env = try p.vulkanDriver.environment(base: ProcessInfo.processInfo.environment, app: Bundle.main.bundleURL, cache: store.paths.cache)
+                let keys = ["KOALA_VULKAN_DRIVER", "KOALA_CACHE_DIR", "SDL_VULKAN_LIBRARY", "VK_DRIVER_FILES", "VK_LOADER_LAYERS_DISABLE", "MESA_SHADER_CACHE_DIR"]
+                let report: [String: Any] = ["driver": p.vulkanDriver.rawValue, "environment": env.filter { keys.contains($0.key) }, "config": p.launchConfig]
+                FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])); exit(0)
+            } catch { fputs("Vulkan launch failed: \(error.localizedDescription)\n", stderr); exit(1) }
         }
         if CommandLine.arguments.contains("--launch-config") {
             do {

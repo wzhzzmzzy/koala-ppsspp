@@ -45,6 +45,7 @@ func check(_ expression: @autoclosure () throws -> Bool) rethrows {
         try store.migrateLegacy()
         try check(try store.read([Game].self, from: store.libraryURL, fallback: [])[0].title == "Newer title")
         let old = try JSONDecoder().decode(PlayerPreferences.self, from: Data(#"{"scale":3,"muted":true}"#.utf8))
+        assert(old.vulkanDriver == .moltenvk)
         assert(old.scale == 3 && old.muted && old.audioBuffer == 256 && old.volume == 100 && old.hud == 1)
         let bounded = try JSONDecoder().decode(PlayerPreferences.self, from: Data(#"{"scale":99,"volume":-20,"audioBuffer":0,"textureFilter":99,"anisotropy":-1,"hud":9,"frameSkip":99}"#.utf8))
         assert(bounded.scale == 4 && bounded.volume == 0 && bounded.audioBuffer == 256 && bounded.textureFilter == 4 && bounded.anisotropy == 0 && bounded.hud == 2 && bounded.frameSkip == 2)
@@ -53,6 +54,7 @@ func check(_ expression: @autoclosure () throws -> Bool) rethrows {
         assert(old.launchConfig.contains("iShowStatusFlags = 6"))
         assert(old.launchConfig.contains("GameVolume = 100"))
         var customized = old
+        customized.vulkanDriver = .kosmickrisp
         customized.volume = 42; customized.hud = 2; customized.audioBuffer = 512
         customized.vsync = false; customized.textureFilter = 3; customized.anisotropy = 2; customized.smart2D = true
         customized.frameSkip = 1; customized.fillAudioGaps = false

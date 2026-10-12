@@ -5,6 +5,7 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--rom', type=Path, required=True, help='Local game image (not included)')
 parser.add_argument('--state', type=Path, required=True, help='Matching in-game save state (not included)')
+parser.add_argument('--driver', choices=['moltenvk','kosmickrisp'], default='moltenvk')
 options = parser.parse_args()
 rom = options.rom.expanduser().resolve()
 state = options.state.expanduser().resolve()
@@ -12,18 +13,20 @@ if not rom.is_file() or not state.is_file():
     parser.error('--rom and --state must refer to existing local files')
 build = json.loads((root/'output/build.json').read_text())
 app = Path(build['app'])
-case = root/'output'/('background-'+build['version']+'-'+time.strftime('%H%M%S'))
+case = root/'output'/('background-'+build['version']+'-'+options.driver+'-'+time.strftime('%H%M%S'))
 case.mkdir()
 for name in ['config/ppsspp', 'cache', 'run', 'logs']:
     (case/name).mkdir(parents=True)
-prefs = dict(scale=3, muted=True, volume=37, hud=2, audioBuffer=512,
+prefs = dict(vulkanDriver=options.driver, scale=3, muted=True, volume=37, hud=2, audioBuffer=512,
              vsync=False, textureFilter=3, anisotropy=2, smart2D=True, frameSkip=0, fillAudioGaps=False)
 (case/'config/preferences.json').write_text(json.dumps(prefs))
 env = dict(os.environ, KOALA_DATA_DIR=str(case), KOALA_CONFIG_DIR=str(case/'config/ppsspp'),
            KOALA_CACHE_DIR=str(case/'cache'), KOALA_LOG_DIR=str(case/'logs'), KOALA_CONTROL_DIR=str(case/'run'),
            KOALA_BACKGROUND_TEST='1')
-config = subprocess.check_output([str(app/'Contents/MacOS/KoalaPSP'), '--launch-config'], env=env)
-(case/'run/launch.ini').write_bytes(config)
+launch = json.loads(subprocess.check_output([str(app/'Contents/MacOS/KoalaPSP'), '--vulkan-launch-report'], env=env))
+env = {k:v for k,v in env.items() if not k.startswith(('VK_', 'MESA_', 'KK_')) and k != 'SDL_VULKAN_LIBRARY'}
+env.update(launch['environment'])
+(case/'run/launch.ini').write_text(launch['config'])
 engine = app/'Contents/Helpers/PPSSPPSDL.app/Contents/MacOS/PPSSPPSDL'
 log = (case/'logs/engine.log').open('wb')
 args = [str(engine), str(rom),
@@ -60,6 +63,10 @@ try:
     first = wait_status(lambda s:s.get('ready') and s.get('playing') and s.get('frame_samples',0)>=10, 50)
     assert {k:first[k] for k in ['render_scale','volume','hud','audio_buffer','vsync','texture_filter','anisotropy','muted']} == dict(render_scale=3,volume=37,hud=2,audio_buffer=512,vsync=False,texture_filter=3,anisotropy=2,muted=True), first
     assert first['frame_ms_mean']>0 and first['frame_ms_p95']>0
+    result['driver'] = json.loads((case/'logs/vulkan-driver.json').read_text())
+    assert result['driver']['requested'] == options.driver
+    assert result['driver']['driverName'].lower() == options.driver
+    assert result['driver']['deviceCreated']
     result['initialStatus'] = first
     result['backgroundCheck'] = json.loads(subprocess.check_output([str(root/'output/check-background'),str(child.pid)]))
     menus = json.loads((case/'logs/native-menus.json').read_text())
