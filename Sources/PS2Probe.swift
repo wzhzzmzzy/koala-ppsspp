@@ -51,6 +51,12 @@ func ps2StorageReport() throws -> Data {
     let diagnostics = try JSONSerialization.jsonObject(with: model.diagnosticData()) as! [String:Any]
     guard (diagnostics["engine"] as? String)?.hasPrefix("ARMSX2") == true,
           (diagnostics["preferences"] as? [String:Any])?["renderer"] != nil else { throw PS2Error.invalid("Wrong PS2 diagnostic settings") }
+    model.platform = .ps3; model.refreshMappings()
+    guard model.mappings == nil, model.settingsPanel == .ps3 else { throw PS3Error.invalid("PS3 must not display PSP/PS2 mappings") }
+    let ps3Diagnostics = try JSONSerialization.jsonObject(with: model.diagnosticData()) as! [String: Any]
+    guard (ps3Diagnostics["engine"] as? String)?.hasPrefix("RPCS3") == true,
+          ps3Diagnostics["requestedVulkanDriver"] == nil,
+          (ps3Diagnostics["preferences"] as? [String: Any])?["inputOwner"] != nil else { throw PS3Error.invalid("PS3 diagnostics contain another engine's settings") }
     model.platform = .psp; model.refreshMappings()
     guard model.mappings == first else { throw PS2Error.invalid("PSP mapping cache did not survive platform roundtrip") }
     return try JSONSerialization.data(withJSONObject: ["passed":true, "platformRoundtrip":true, "missingBIOSBlockedBeforeProcess":true,

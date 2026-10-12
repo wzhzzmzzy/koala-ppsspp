@@ -26,7 +26,7 @@ struct EngineStatus: Decodable {
     var texture_filter: Int?
     var anisotropy: Int?
 }
-enum PlayerPanel: String, Identifiable { case settings, controls, diagnostics, ps2; var id: String { rawValue } }
+enum PlayerPanel: String, Identifiable { case settings, controls, diagnostics, ps2, ps3; var id: String { rawValue } }
 
 struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String }
 
@@ -40,9 +40,10 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             mappings = nil; lastMappingData = nil; mappingSource = "尚未读取按键配置"
             selection = games.first { $0.platform == platform }?.id
             if loaded { selectLastSession() }; lastCommandMilliseconds = nil
-            refreshPS2(); persistState()
+            refreshPS2(); refreshPS3(); persistState()
         }
     }
+    @Published var firmwareDescription = "尚未检测到 PS3 固件"
     @Published var biosDescription = "尚未导入 BIOS"
     @Published var running = false
     @Published var status: EngineStatus?
@@ -77,11 +78,19 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     private var logHandle: FileHandle?
     private var ps2QuitSent = false
     private var ps2QuitAt: Date?
+    private var ps3QuitAt: Date?
+    private var ps3QuitRequested = false
+    private var ps3StartedAt: Date?
     private var quitCompletion: (() -> Void)?
 
     var selected: Game? { games.first { $0.id == selection } }
     var ps2: PS2Engine { PS2Engine(paths: store.paths) }
     var isPS2: Bool { platform == .ps2 }
+    var isPSP: Bool { platform == .psp }
+    var isPS3: Bool { platform == .ps3 }
+    var ps3: PS3Engine { PS3Engine() }
+    var settingsPanel: PlayerPanel { isPS3 ? .ps3 : isPS2 ? .ps2 : .settings }
+    var nativeEngineName: String { isPS3 ? "RPCS3" : "ARMSX2" }
     var visibleGames: [Game] { games.filter { $0.platform == platform } }
     var driverDescription: String {
         if let report = driverReport { return "\(running ? "实际驱动" : "上次会话驱动")：\(report.driverName) · \(report.deviceName)" }
@@ -104,7 +113,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             selection = games.contains(where: { $0.id == libraryState.selectedGameID }) ? libraryState.selectedGameID : games.first?.id
             if selected?.platform != platform { selection = visibleGames.first?.id }
             loaded = true
-            selectLastSession(); refreshPS2()
+            selectLastSession(); refreshPS2(); refreshPS3()
         } catch { self.error = error.localizedDescription }
         timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
@@ -132,6 +141,11 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
 
     func addFile(_ url: URL) {
         guard loaded else { return }
+        if isPS3 {
+            do { addPS3Content(try PS3Content.inspect(url)) }
+            catch { self.error = error.localizedDescription }
+            return
+        }
         guard platform.extensions.contains(url.pathExtension.lowercased()) else {
             error = "请选择 \(platform.title) 游戏：\(platform.extensions.joined(separator: " / "))。"; return
         }
@@ -152,7 +166,8 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         picker.title = "添加 \(platform.title) 游戏"
         picker.prompt = "添加到游戏库"
         picker.allowsMultipleSelection = true
-        picker.canChooseDirectories = false
+        picker.canChooseDirectories = isPS3
+        if isPS3 { picker.message = "选择 PS3 游戏文件夹、ISO 或 EBOOT.BIN；PKG 请在 PS3 设置中安装。" }
         picker.allowedContentTypes = platform.extensions.compactMap { UTType(filenameExtension: $0) }
         if picker.runModal() == .OK { for file in picker.urls { addFile(file) } }
     }
@@ -165,6 +180,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
 
     func start(resume: Bool = false) {
         guard loaded, !running, let game = selected else { return }
+        if game.platform == .ps3 { startPS3(.game(URL(fileURLWithPath: game.path))); return }
         if game.platform == .ps2 { startPS2(.game(URL(fileURLWithPath: game.path))); return }
         guard FileManager.default.isReadableFile(atPath: game.path) else { error = "找不到游戏文件，请重新添加。"; return }
         let helper = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/PPSSPPSDL.app/Contents/MacOS/PPSSPPSDL")
@@ -222,6 +238,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
 
     func command(_ operation: String) {
         guard running else { return }
+        if isPS3 { if operation == "quit" { stopPS3() }; return }
         if isPS2 {
             if operation == "quit" { stopPS2() }
             return
@@ -238,6 +255,14 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         if panel == .diagnostics { refreshLogs() }
         if panel == .controls { refreshMappings() }
         guard running else { return }
+        if isPS3 {
+            if let at = ps3QuitAt, Date().timeIntervalSince(at) > 15 {
+                ps3QuitAt = nil; pending = false
+                error = "RPCS3 尚未退出，请检查原生窗口中的保存或退出确认。Koala PS 不会强制结束它。"
+                if quitCompletion != nil { quitCompletion = nil; NSApp.reply(toApplicationShouldTerminate: false) }
+            }
+            return
+        }
         if isPS2 {
             if let at = ps2QuitAt, Date().timeIntervalSince(at) > 15 {
                 ps2QuitAt = nil; pending = false
@@ -283,6 +308,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     }
 
     func refreshMappings() {
+        if isPS3 { mappings = nil; mappingSource = "由 RPCS3 原生 Pads 设置管理；统一映射尚未接入"; return }
         if isPS2 {
             do {
                 mappings = try PS2Mappings.snapshot(ps2.read())
@@ -307,7 +333,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             mappingSource = FileManager.default.fileExists(atPath: url.path) ? "读取按键配置失败：\(error.localizedDescription)" : running ? "等待模拟器按键配置…" : "尚无已保存配置 · 请先启动一次游戏"
         }
     }
-    func editMappings() { if isPS2 { if running { focusGame() } else { startPS2(.settings) }; return }; guard ready, !pending else { return }; command("mapping-ui"); focusGame() }
+    func editMappings() { if isPS3 { if running { focusGame() } else { startPS3(.library) }; return }; if isPS2 { if running { focusGame() } else { startPS2(.settings) }; return }; guard ready, !pending else { return }; command("mapping-ui"); focusGame() }
 
     func apply(_ draft: PlayerPreferences) {
         var next = draft; next.normalize()
@@ -326,7 +352,10 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     }
     func refreshLogs() {
         let ps2Log = sessionRoot.appendingPathComponent("emulog.txt")
-        let url = isPS2 && FileManager.default.fileExists(atPath: ps2Log.path) ? ps2Log : sessionRoot.appendingPathComponent("engine.log")
+        let ps3Log = running ? ps3.log : sessionRoot.appendingPathComponent("RPCS3.log")
+        let freshPS3Log = !running || ((try? ps3Log.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) >= (ps3StartedAt ?? .distantFuture)
+        let url = isPS3 && freshPS3Log && FileManager.default.fileExists(atPath: ps3Log.path) ? ps3Log :
+            isPS2 && FileManager.default.fileExists(atPath: ps2Log.path) ? ps2Log : sessionRoot.appendingPathComponent("engine.log")
         guard let file = try? FileHandle(forReadingFrom: url) else { logText = "尚无引擎日志。启动游戏后自动记录。"; return }
         defer { try? file.close() }
         do {
@@ -341,10 +370,10 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         for game in games { safeLog = safeLog.replacingOccurrences(of: game.path, with: "<game-file>") }
         var report: [String: Any] = ["appVersion": Bundle.main.infoDictionary?["KoalaReleaseVersion"] ?? "development",
             "system": ProcessInfo.processInfo.operatingSystemVersionString, "architecture": "arm64",
-            "engine": isPS2 ? "ARMSX2 \(PS2Engine.version) / native ARM64" : "PPSSPP 1.20.4 / Vulkan → Metal", "running": running,
+            "engine": isPS3 ? "RPCS3 \(PS3Engine.version) / official ARM64" : isPS2 ? "ARMSX2 \(PS2Engine.version) / native ARM64" : "PPSSPP 1.20.4 / Vulkan → Metal", "running": running,
             "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(preferences)),
             "logTail": safeLog, "inputToPhotonLatency": "not measured",
-            "frameTimingDefinition": isPS2 ? "PS2 launcher telemetry not connected; use engine HUD; input latency not measured" : "Most recent 60 emulated VBlank intervals, including waits; not input latency",
+            "frameTimingDefinition": !isPSP ? "Standalone engine telemetry not connected; use engine HUD; input latency not measured" : "Most recent 60 emulated VBlank intervals, including waits; not input latency",
             "exportedAt": ISO8601DateFormatter().string(from: Date())]
         if isPS2 {
             let ini = try ps2.read()
@@ -352,11 +381,17 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             report["preferences"] = ["scale": options.scale, "volume": options.volume, "hud": options.hud,
                                      "renderer": ini.value("EmuCore/GS", "Renderer") ?? "unknown"] as [String: Any]
         }
-        if !isPS2 {
+        if isPS3 {
+            report["preferences"] = ["source": "RPCS3 native settings", "inputOwner": ps3.inputOwner]
+            report["firmware"] = firmwareDescription
+            report["profile"] = ps3.config.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
+            report["gamePerformanceMeasured"] = false
+        }
+        if isPSP {
             report["requestedVulkanDriver"] = preferences.vulkanDriver.rawValue
             if let driverReport { report["vulkanDriver"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(driverReport)) }
         }
-        if !isPS2, let data = try? Data(contentsOf: controlRoot.appendingPathComponent("status.json")),
+        if isPSP, let data = try? Data(contentsOf: controlRoot.appendingPathComponent("status.json")),
            var status = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             status.removeValue(forKey: "auto_path"); report["status"] = status
         }
@@ -375,12 +410,15 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
     func selectLastSession() {
         let sessions = store.paths.state.appendingPathComponent("sessions")
         let candidates = (try? FileManager.default.contentsOfDirectory(at: sessions, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        sessionRoot = candidates.filter { $0.lastPathComponent.hasPrefix("ps2-") == isPS2 }.max {
+        sessionRoot = candidates.filter {
+            let name = $0.lastPathComponent
+            return isPS3 ? name.hasPrefix("ps3-") : isPS2 ? name.hasPrefix("ps2-") : !name.hasPrefix("ps2-") && !name.hasPrefix("ps3-")
+        }.max {
             ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) <
             ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
         } ?? (isPS2 ? ps2.logs : store.paths.state)
         driverReport = nil
-        if !isPS2, let data = try? Data(contentsOf: sessionRoot.appendingPathComponent("vulkan-driver.json")) {
+        if isPSP, let data = try? Data(contentsOf: sessionRoot.appendingPathComponent("vulkan-driver.json")) {
             driverReport = try? JSONDecoder().decode(VulkanDriverReport.self, from: data)
         }
     }
@@ -452,9 +490,113 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
         feedback = "正在请求 ARMSX2 正常保存并退出…"
     }
 
+    func refreshPS3() {
+        guard loaded, isPS3 else { return }
+        do { firmwareDescription = try ps3.firmwareDescription() ?? "尚未检测到完整的 PS3 固件" }
+        catch { firmwareDescription = "无法读取固件路径，请检查 RPCS3 的 VFS 设置" }
+    }
+    func addPS3Content(_ content: PS3Content) {
+        if let game = games.first(where: { $0.platform == .ps3 && $0.path == content.url.path }) { selection = game.id; return }
+        let game = Game(id: UUID().uuidString, path: content.url.path, title: content.title, bytes: content.bytes, platform: .ps3)
+        games.append(game); selection = game.id; persistLibrary()
+        feedback = "已添加 PS3 游戏，原文件保留在当前位置。"
+    }
+    func scanPS3Games() {
+        guard !running, isPS3 else { return }
+        do {
+            let contents = try ps3.installedGames()
+            let before = games.count
+            for content in contents { addPS3Content(content) }
+            feedback = "扫描到 \(contents.count) 个已安装游戏，新增 \(games.count - before) 个。光盘游戏请用「添加游戏」。"
+        } catch { self.error = error.localizedDescription }
+    }
+    func installPS3(firmware: Bool) {
+        guard !running, isPS3 else { return }
+        let picker = NSOpenPanel()
+        picker.title = firmware ? "安装 PS3 固件" : "安装 PS3 PKG"
+        picker.prompt = "交给 RPCS3 安装"
+        picker.message = firmware ? "选择从 Sony 下载的 PS3UPDAT.PUP；RPCS3 会校验并安装。" : "选择自己的 PS3 游戏或更新包；安装结果请查看 RPCS3。"
+        picker.canChooseDirectories = false; picker.allowsMultipleSelection = false
+        picker.allowedContentTypes = [UTType(filenameExtension: firmware ? "pup" : "pkg") ?? .data]
+        if picker.runModal() == .OK, let url = picker.url { startPS3(firmware ? .firmware(url) : .package(url)) }
+    }
+    func startPS3(_ launch: PS3Engine.Launch) {
+        guard loaded, !running, isPS3 else { return }
+        do {
+            guard PS3Engine.supported else { throw PS3Error.invalid("内置官方 RPCS3 需要 macOS 15 或更新版本；PSP / PS2 仍可使用。") }
+            guard NSRunningApplication.runningApplications(withBundleIdentifier: "net.rpcs3.rpcs3").isEmpty else {
+                throw PS3Error.invalid("RPCS3 已在运行。请先退出已有实例，再从 Koala PS 启动；第一版共用 RPCS3 标准数据目录。")
+            }
+            let helper = Bundle.main.bundleURL.appendingPathComponent(PS3Engine.relativeExecutable)
+            guard FileManager.default.isExecutableFile(atPath: helper.path) else { throw PS3Error.invalid("RPCS3 引擎缺失，请重新安装完整 ZIP。") }
+            let args = try ps3.arguments(for: launch)
+            let session = store.paths.state.appendingPathComponent("sessions/ps3-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let log = session.appendingPathComponent("engine.log")
+            FileManager.default.createFile(atPath: log.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: log)
+            let child = Process(); child.executableURL = helper; child.arguments = args
+            child.currentDirectoryURL = helper.deletingLastPathComponent()
+            child.environment = ps3.environment(ProcessInfo.processInfo.environment)
+            child.standardOutput = handle; child.standardError = handle
+            child.terminationHandler = { [weak self] child in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.archivePS3Log()
+                    self.running = false; self.pending = false; self.process = nil
+                    self.ps3QuitRequested = false; self.ps3QuitAt = nil
+                    try? self.logHandle?.close(); self.logHandle = nil
+                    self.refreshPS3(); self.refreshLogs()
+                    if child.terminationStatus == 0 {
+                        self.scanPS3Games()
+                        self.feedback = "RPCS3 已关闭，已刷新固件状态与已安装游戏。安装或游玩结果请查看日志。"
+                    } else {
+                        self.error = "RPCS3 已退出（\(child.terminationStatus)），请查看日志与调试。"
+                    }
+                    self.quitCompletion?(); self.quitCompletion = nil
+                }
+            }
+            ps3StartedAt = Date()
+            do { try child.run() } catch { try? handle.close(); throw error }
+            sessionRoot = session; logHandle = handle; process = child; running = true
+            status = nil; driverReport = nil; lastCommandMilliseconds = nil; needsRestart = false
+            ps3QuitRequested = false
+            if case .game = launch, let game = selected {
+                libraryState.lastPlayedGameID = game.id; libraryState.lastPlayedAt = Date(); persistState()
+                if let index = games.firstIndex(where: { $0.id == game.id }) { games[index].lastPlayed = Date(); persistLibrary() }
+            }
+            feedback = "RPCS3 进程已启动。设置、输入和安装结果由原生引擎管理；关闭后返回游戏库。"
+        } catch { self.error = error.localizedDescription }
+    }
+    private func archivePS3Log() {
+        guard let started = ps3StartedAt,
+              let modified = try? ps3.log.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+              modified >= started, let file = try? FileHandle(forReadingFrom: ps3.log) else { return }
+        defer { try? file.close() }
+        do {
+            let size = try file.seekToEnd(); try file.seek(toOffset: size > 1_048_576 ? size - 1_048_576 : 0)
+            var data = Data((size > 1_048_576 ? "[仅保留本次日志末尾 1 MiB]\n" : "").utf8)
+            data.append(try file.readToEnd() ?? Data())
+            try data.write(to: sessionRoot.appendingPathComponent("RPCS3.log"), options: .atomic)
+        } catch { feedback = "RPCS3 日志副本保存失败，完整日志仍位于原生缓存目录。" }
+    }
+    func stopPS3() {
+        guard running, let process else { return }
+        guard !ps3QuitRequested else { error = "已请求 RPCS3 退出，请在原生窗口确认。"; return }
+        // RPCS3 has no graceful SIGTERM handler. Send macOS's normal Quit event
+        // to this exact child; never terminate()/SIGKILL its emulation threads.
+        guard NSRunningApplication(processIdentifier: process.processIdentifier)?.terminate() == true else {
+            error = "RPCS3 未接受退出请求，请在原生窗口使用 RPCS3 → Quit。"
+            quitCompletion = nil; NSApp.reply(toApplicationShouldTerminate: false); return
+        }
+        ps3QuitRequested = true; ps3QuitAt = Date(); pending = true
+        feedback = "已请求 RPCS3 正常退出；如有确认提示，请在原生窗口处理。"
+    }
+
     func requestQuit(_ completion: @escaping () -> Void) {
         guard running else { completion(); return }
         guard !pending else { error = "请等待当前存档操作结束后退出。"; NSApp.reply(toApplicationShouldTerminate: false); return }
+        if isPS3 && ps3QuitRequested { error = "RPCS3 仍在退出，请检查原生窗口。"; NSApp.reply(toApplicationShouldTerminate: false); return }
         if isPS2 && ps2QuitSent { error = "ARMSX2 仍在退出，请检查引擎窗口。"; NSApp.reply(toApplicationShouldTerminate: false); return }
         quitCompletion = completion; command("quit")
     }
@@ -499,7 +641,8 @@ struct PlayerView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     libraryHeader
                     if model.isPS2 { PS2LibrarySection(model: model) }
-                    if model.running && !model.isPS2 {
+                    if model.isPS3 { PS3LibrarySection(model: model) }
+                    if model.running && model.isPSP {
                         HStack {
                             Button { model.focusGame() } label: { Label("回到游戏", systemImage: "play.fill") }.buttonStyle(.borderedProminent)
                             Button(model.status?.playing == false ? "继续" : "暂停") { model.command("pause") }.disabled(!model.ready || model.pending)
@@ -508,13 +651,13 @@ struct PlayerView: View {
                             Spacer()
                             Button("保存并结束") { model.command("quit") }.disabled(model.pending)
                         }
-                    } else if !model.isPS2 {
+                    } else if model.isPSP {
                         HStack(spacing: 12) {
                             Button { model.start() } label: { Label("开始游戏", systemImage: "play.fill").padding(.horizontal, 10) }
                                 .buttonStyle(.borderedProminent).disabled(model.selected == nil)
                             Button("继续自动存档") { model.start(resume: true) }.disabled(model.selected?.autoState == nil)
                             Spacer()
-                            Button { model.present(model.isPS2 ? .ps2 : .settings) } label: {
+                            Button { model.present(model.settingsPanel) } label: {
                                 Label(model.preferences.graphicsDescription, systemImage: "slider.horizontal.3")
                             }.help("渲染分辨率、视频、音频与 HUD 设置")
                         }
@@ -526,7 +669,7 @@ struct PlayerView: View {
                             metric("驻留内存（RSS）", ByteCountFormatter.string(fromByteCount: Int64(status.rss_bytes), countStyle: .memory))
                         }
                     }
-                    if !model.isPS2 { GroupBox {
+                    if model.isPSP { GroupBox {
                         VStack(spacing: 0) {
                             slot("自动存档", subtitle: "每 30 秒保存，结束游戏时再保存", slot: 0, exists: model.status?.auto_exists == true)
                             Divider().padding(.vertical, 12)
@@ -538,10 +681,10 @@ struct PlayerView: View {
                             Image(systemName: "keyboard").font(.system(size: 30)).foregroundStyle(.secondary)
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("键盘与手柄").font(.headline)
-                                Text("查看按键位置、\(model.platform.title) 对应关系和常用快捷键。").foregroundStyle(.secondary)
+                                Text(model.isPS3 ? "当前由 RPCS3 的 Pads 设置管理键盘和手柄。" : "查看按键位置、\(model.platform.title) 对应关系和常用快捷键。").foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("查看示意图…") { model.present(.controls) }
+                            Button(model.isPS3 ? "设置输入…" : "查看示意图…") { model.present(.controls) }
                         }.padding(12)
                     }
                     if model.needsRestart {
@@ -559,9 +702,9 @@ struct PlayerView: View {
             .toolbar {
                 ToolbarItem {
                     Button { model.chooseFiles() } label: { Label("添加游戏", systemImage: "plus").labelStyle(.titleAndIcon) }
-                        .keyboardShortcut("o").disabled(model.running).help("添加本机 ISO / CSO / CHD 等游戏文件（⌘O），保留原文件位置")
+                        .keyboardShortcut("o").disabled(model.running).help(model.isPS3 ? "添加 PS3 游戏文件夹 / ISO / EBOOT.BIN（⌘O）" : "添加本机 ISO / CSO / CHD 等游戏文件（⌘O），保留原文件位置")
                 }
-                ToolbarItem { Button { model.present(model.isPS2 ? .ps2 : .settings) } label: { Label("设置", systemImage: "slider.horizontal.3") }.help("视频、音频与性能 HUD（⌘,）") }
+                ToolbarItem { Button { model.present(model.settingsPanel) } label: { Label("设置", systemImage: "slider.horizontal.3") }.help("视频、音频与性能 HUD（⌘,）") }
                 ToolbarItem { Button { model.present(.diagnostics) } label: { Label("日志与调试", systemImage: "waveform.path.ecg") } }
                 ToolbarItem {
                     Menu {
@@ -583,7 +726,8 @@ struct PlayerView: View {
             switch panel {
             case .settings: PlayerSettingsView(model: model)
             case .ps2: PS2SettingsView(model: model)
-            case .controls: ControlsView()
+            case .ps3: PS3SettingsView(model: model)
+            case .controls: if model.isPS3 { PS3ControlsView(model: model) } else { ControlsView() }
             case .diagnostics: DiagnosticsView(model: model)
             }
         }
@@ -591,6 +735,7 @@ struct PlayerView: View {
             guard !handledArguments else { return }; handledArguments = true
             let args = CommandLine.arguments
             if args.contains("--ps2") { model.platform = .ps2 }
+            if args.contains("--ps3") { model.platform = .ps3 }
             if let i = args.firstIndex(of: "--scale"), args.indices.contains(i + 1) { model.scale = min(4, max(1, Int(args[i + 1]) ?? 1)) }
             if let i = args.firstIndex(of: "--rom"), args.indices.contains(i + 1) { model.addFile(URL(fileURLWithPath: args[i + 1])) }
             if args.contains("--play") { model.start(resume: args.contains("--resume")) }
@@ -602,7 +747,7 @@ struct PlayerView: View {
             LibraryLogo(platform: model.platform).foregroundStyle(tint)
             VStack(alignment: .leading, spacing: 8) {
                 Text(model.selected?.title ?? "你的 \(model.platform.title) 游戏库").font(.system(size: 26, weight: .semibold)).lineLimit(3)
-                Text(model.selected.map { ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) + " · 本机文件" } ?? "将 \(model.platform.title) 游戏添加到这里，随时继续冒险。")
+                Text(model.selected.map { ($0.platform == .ps3 && $0.bytes == 0 ? "本机 PS3 游戏文件夹" : ByteCountFormatter.string(fromByteCount: $0.bytes, countStyle: .file) + " · 本机文件") } ?? "将 \(model.platform.title) 游戏添加到这里，随时继续冒险。")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -633,9 +778,17 @@ struct PlayerView: View {
 @main struct KoalaPSPApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     init() {
+        if CommandLine.arguments.contains("--ps3-launch-check") {
+            do { FileHandle.standardOutput.write(try ps3LaunchReport()); exit(0) }
+            catch { fputs("PS3 launch check failed: \(error.localizedDescription)\n", stderr); exit(1) }
+        }
         if CommandLine.arguments.contains("--platform-check") {
             do { FileHandle.standardOutput.write(try platformIntegrationReport()); exit(0) }
             catch { fputs("Platform check failed: \(error.localizedDescription)\n", stderr); exit(1) }
+        }
+        if CommandLine.arguments.contains("--ps3-report") {
+            do { FileHandle.standardOutput.write(try ps3StorageReport()); exit(0) }
+            catch { fputs("PS3 check failed: \(error.localizedDescription)\n", stderr); exit(1) }
         }
         if CommandLine.arguments.contains("--ps2-report") {
             do { FileHandle.standardOutput.write(try ps2StorageReport()); exit(0) }

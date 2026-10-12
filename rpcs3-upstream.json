@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/RPCS3/rpcs3.git",
+  "revision": "2ba2f75bcea7ef6bdd687046c7fcfb790faf9853",
+  "version": "0.0.43-20284",
+  "release": "build-2ba2f75bcea7ef6bdd687046c7fcfb790faf9853",
+  "asset": "rpcs3-v0.0.43-20284-2ba2f75b_macos_aarch64.7z",
+  "url": "https://github.com/RPCS3/rpcs3-binaries-mac-arm64/releases/download/build-2ba2f75bcea7ef6bdd687046c7fcfb790faf9853/rpcs3-v0.0.43-20284-2ba2f75b_macos_aarch64.7z",
+  "sha256": "72ca5afa2cd524bbb89ed926ad6746b6f2b2bb215c003fe5a7ed29e16c3b2358",
+  "bundle": "RPCS3.app",
+  "executable": "Contents/MacOS/rpcs3",
+  "minimumMacOS": "15.0",
+  "architecture": "arm64",
+  "sourceArchive": "https://github.com/RPCS3/rpcs3/archive/2ba2f75bcea7ef6bdd687046c7fcfb790faf9853.tar.gz"
+}

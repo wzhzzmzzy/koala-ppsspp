@@ -1,6 +1,38 @@
 # Koala PS
 
-面向 macOS 的原生 PSP / PS2 模拟器：SwiftUI / AppKit 游戏库与设置界面，内置 PPSSPP 1.20.4 ARM64 引擎，Vulkan 经 MoltenVK 使用 Metal，SDL2 提供 PSP 原生输入与游戏窗口。PS2 集成官方 ARMSX2 ARM64 macOS 引擎（Qt/C++，默认 Metal），由独立进程运行。
+面向 macOS 的原生 PSP / PS2 / PS3 模拟器：SwiftUI / AppKit 游戏库与设置界面，内置 PPSSPP 1.20.4 ARM64 引擎，Vulkan 经 MoltenVK 使用 Metal，SDL2 提供 PSP 原生输入与游戏窗口。PS2 集成官方 ARMSX2 ARM64 macOS 引擎（Qt/C++，默认 Metal），由独立进程运行。PS3 使用官方 RPCS3 ARM64 独立进程，保留原生设置与输入管理。
+
+## PS3 本地预览 · 0.7.0-preview.1
+
+本地 App：`dist/0.7.0-preview.1/Koala PSP.app`；完整分享包：`dist/Koala-PSP-0.7.0-preview.1-macOS-arm64.zip`。本轮生成本地构建，尚未发布该版本的远端 Release；下方 0.6.0 链接是此前的公开实验版。
+
+PS3 需要 **Apple Silicon + macOS 15 或更新版本**；PSP / PS2 仍保留 macOS 14 最低要求。源码从当前提交重建可得到完整三平台应用，目标 Mac 不需要安装 RPCS3、Qt 或开发工具。
+
+1. 在左侧选择 **PS3**，进入「PS3 设置」，通过 Sony 官方链接取得 `PS3UPDAT.PUP`，点击「安装固件」交给 RPCS3 校验、安装。
+2. 游戏文件夹、ISO、EBOOT.BIN 可用「添加游戏」加入库；仅保存路径，不复制大镜像。文件夹会读取 PARAM.SFO 标题。安装包使用「安装 PKG」，所需的个人许可证由 RPCS3 管理。
+3. 安装完成后关闭 RPCS3，启动器刷新固件状态和已安装游戏；也可以点击「扫描已安装游戏」。扫描只收录有可启动程序的 HDD 游戏，不把光盘更新数据列为独立游戏。
+4. 开始游戏后，键盘、手柄使用 RPCS3 的 **Pads**，画质、音频、性能叠层和每游戏配置使用 RPCS3 原生界面。Koala PS 尚未接入统一映射、实时 HUD 或快捷存档，因此不会显示 PSP 的相应按钮或示意图。
+
+固定官方版本为 **RPCS3 0.0.43-20284 / `2ba2f75bcea7ef6bdd687046c7fcfb790faf9853`**。完整官方 App（包括 Qt、MoltenVK 及资源）原样内置；Koala PS 不修改 PS3 模拟核心。启动时不设置全屏，不传递 PSP 的 KosmicKrisp 或 Vulkan 覆盖。退出使用 macOS 正常 Quit 请求，拒绝或超时后交由用户在原生窗口处理，不发送 SIGTERM / SIGKILL。
+
+![PS3 原生设置](docs/images/ps3-settings.png)
+
+### PS3 数据位置
+
+按用户选择，当前官方 macOS 引擎沿用自己的标准目录；它在 macOS 上忽略 XDG 配置/缓存变量。**会与单独安装的 RPCS3 共用数据**，应用在发现运行中的 RPCS3 时阻止重复启动，不自动迁移或改写已有配置。固件识别、游戏扫描读取引擎 VFS 中的自定义路径；不能理解的复杂 YAML 路径会明确提示。
+
+| 内容 | 默认路径 |
+| --- | --- |
+| RPCS3 设置、输入、固件、游戏安装及存档 | `~/Library/Application Support/rpcs3/` |
+| RPCS3 编译缓存及完整原生日志 | `~/Library/Caches/rpcs3/` |
+| Koala PS 游戏库 | `~/.local/share/koala-psp/library.json` |
+| Koala PS 每次 PS3 启动日志、退出时原生日志末尾副本 | `~/.local/state/koala-psp/sessions/ps3-*/` |
+
+后续深度整合再迁移 PS3 到 XDG，并建立 Koala PS 统一输入模型。`PS3Engine.Launch` 负责启动意图，输入的唯一配置方目前明确为 RPCS3；不会维护两份互相覆盖的键位设置。`KOALA_DATA_DIR` 只隔离启动器测试数据，**不改变官方 RPCS3 的标准路径**。
+
+### 本轮验证边界
+
+已验证合成数据导入/边界校验、固件缺失拦截、安装参数、已安装游戏扫描、自定义 VFS 及配置保留、PSP/PS2/PS3 切换、离屏原生面板和官方 CLI 后台启动。没有真实 PS3 固件或游戏，**未验证实际固件/PKG 安装、游戏启动、画面/音频、控制器、存档、正常游玩时的退出或 FPS**。无前台激活，不测试全屏。签名仍为本地 ad-hoc，非 Developer ID 公证；第二台真机尚未测试。
 
 ## 下载与安装
 
@@ -118,7 +150,7 @@ HUD 展示 FPS、模拟速度、VBlank 平均间隔/P95 与内部渲染尺寸。
 
 ## 构建应用
 
-需要 Apple Silicon Mac、Xcode Command Line Tools、CMake 和 Python 3.9+。已验证工具环境为 macOS 26.2 / M3 Pro、Swift 6.3.3、CMake 4.3。
+需要 Apple Silicon Mac、Xcode Command Line Tools、CMake、7-Zip（`7zz`）和 Python 3.9+。已验证工具环境为 macOS 26.2 / M3 Pro、Swift 6.3.3、CMake 4.3。
 
 ```sh
 git clone https://github.com/wzhzzmzzy/koala-ppsspp.git
@@ -130,6 +162,8 @@ bash build.sh
 
 KosmicKrisp 打包运行 `scripts/prepare-vulkan.py`：按 [vulkan-upstream.json](vulkan-upstream.json) 校验官方下载及已解包库的 SHA-256，通过无窗口 `copy_only=1` 方式解包到 `vendor/vulkan-sdk`，不安装系统级驱动。仅两份运行库和相对路径 ICD 进入 App；相关许可证与源码版本同时内置。当前构建此实验包使用 macOS 26+。
 
+PS3 打包运行 `scripts/prepare-ps3.py`，下载 [rpcs3-upstream.json](rpcs3-upstream.json) 固定的官方 7z 文件并核验 SHA-256、ARM64 与签名。不编译 RPCS3；对应源码与官方构建脚本的固定链接随包提供。
+
 PS2 打包阶段运行 `scripts/prepare-ps2.py`，按 [armsx2-upstream.json](armsx2-upstream.json) 下载官方 macOS 包并校验固定 SHA-256；所有内置库保留在 helper bundle 内。PS2 无需 Qt 开发工具，也不会编译官方 PS2 源码。若要自行编译，使用同提交的 `.github/workflows/macos_build.yml` 及依赖脚本。
 
 已有该固定版本的独立 PPSSPP 引擎 checkout 时，可以指定：
@@ -138,7 +172,7 @@ PS2 打包阶段运行 `scripts/prepare-ps2.py`，按 [armsx2-upstream.json](arm
 PPSSPP_SOURCE_DIR=/absolute/path/to/ppsspp bash build.sh
 ```
 
-该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.6.0-experimental.1/Koala PSP.app` 和 `dist/Koala-PSP-0.6.0-experimental.1-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
+该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.7.0-preview.1/Koala PSP.app` 和 `dist/Koala-PSP-0.7.0-preview.1-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
 
 目录说明：`Sources/` 为原生 UI 和桥接；`patches/` 为引擎修改；`Assets/` 为 App 图标；`scripts/` 为打包/审计/测试工具；`tests/` 为存储和映射测试。`vendor/`、`output/` 与私有测试 `data/` 均不提交。
 
@@ -166,7 +200,7 @@ python3 scripts/audit-package.py
 
 ```sh
 KOALA_DATA_DIR="$PWD/output/preview-data" \
-  'dist/0.6.0-experimental.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
+  'dist/0.7.0-preview.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
 xcrun swift -module-cache-path output/swift-module-cache \
   scripts/check-controller-geometry.swift output/previews
 ```
@@ -197,10 +231,23 @@ PS2 无 BIOS 的后台检查（不会创建窗口）：
 ```sh
 xcrun swiftc scripts/check-ps2-background.swift -o output/check-ps2-background \
   -module-cache-path output/swift-module-cache
-output/check-ps2-background "$PWD/dist/0.6.0-experimental.1/Koala PSP.app" "$PWD/output/ps2-background-check"
+output/check-ps2-background "$PWD/dist/0.7.0-preview.1/Koala PSP.app" "$PWD/output/ps2-background-check"
 KOALA_DATA_DIR="$PWD/output/ps2-preview-data" \
-  'dist/0.6.0-experimental.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
+  'dist/0.7.0-preview.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
 ```
+
+PS3 无游戏的测试：
+
+```sh
+xcrun swiftc -parse-as-library Sources/AppStorage.swift Sources/PS3Engine.swift tests/PS3Tests.swift \
+  -o output/ps3-tests -module-cache-path output/swift-module-cache
+output/ps3-tests
+xcrun swiftc scripts/check-ps3-background.swift -o output/check-ps3-background \
+  -module-cache-path output/swift-module-cache
+output/check-ps3-background "$PWD/dist/0.7.0-preview.1/Koala PSP.app" "$PWD/output/ps3-background-check"
+```
+
+后台检查使用 RPCS3 的 `--headless --version/--help`，会更新其标准缓存中的启动日志；如已运行 RPCS3，会先退出测试而不干扰已有会话。`--ps3-report` 只读状态，不启动引擎。测试没有模拟 PS3 游戏。
 
 ## 上游与许可
 
@@ -209,3 +256,5 @@ PPSSPP 核心及其修改依据上游 GPL-2.0-or-later 发布，原始完整声�
 ARMSX2 按 [GPL-3.0-or-later](licenses/ARMSX2-GPLv3.txt) 分发；[对应源码](https://github.com/ARMSX2/ARMSX2/tree/b1f3196b9ea6aa4e89907b02dffd63b784d13ed2)、[完整源码下载](https://github.com/ARMSX2/ARMSX2/archive/b1f3196b9ea6aa4e89907b02dffd63b784d13ed2.tar.gz) 和同版本 macOS 构建脚本可用于重建上游。完整第三方声明保留在 `Contents/Helpers/ARMSX2.app/Contents/Resources/docs/ThirdPartyLicenses.html`；应用还内置 GPL 文本、来源说明和固定版本清单。
 
 本仓库不提供游戏 ROM、BIOS 或游戏存档。测试 BIOS 为程序生成的空数据与 ROMDIR 元信息，不含固件代码、不能启动，不进入发行包。
+
+RPCS3 按 [GPL-2.0-only 及文件内例外声明](licenses/RPCS3-LICENSE.txt) 分发；固定来源、下载哈希和对应源码见 [rpcs3-upstream.json](rpcs3-upstream.json)。完整官方依赖、资源和许可保留在 helper bundle 中，来源说明位于 `Contents/Resources/Licenses/RPCS3-SOURCE.txt`。

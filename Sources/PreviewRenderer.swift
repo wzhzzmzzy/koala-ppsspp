@@ -54,6 +54,16 @@ import SwiftUI
             ("library", AnyView(PlayerView(model: model).frame(width: 1180, height: 860)))
         ]
     }
+    if CommandLine.arguments.contains("--ps3") {
+        model.platform = .ps3; model.refreshPS3(); model.refreshMappings()
+        panels = [
+            ("ps3-platform-selector", AnyView(PlayerView(model: model).platformSelector.frame(width: 260))),
+            ("ps3-library", AnyView(PlayerView(model: model).frame(width: 1180, height: 860))),
+            ("ps3-settings", AnyView(PS3SettingsView(model: model))),
+            ("ps3-controls", AnyView(PS3ControlsView(model: model))),
+            ("ps3-diagnostics", AnyView(DiagnosticsView(model: model)))
+        ]
+    }
     let dark = CommandLine.arguments.contains("--dark")
     if dark { NSApplication.shared.appearance = NSAppearance(named: .darkAqua) }
     for (name, content) in panels {

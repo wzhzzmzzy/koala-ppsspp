@@ -12,6 +12,7 @@ build = json.loads((root/'output/build.json').read_text())
 app = Path(build['app'])
 engine = app/'Contents/Helpers/PPSSPPSDL.app'
 ps2 = app/'Contents/Helpers/ARMSX2.app'
+ps3 = app/'Contents/Helpers/RPCS3.app'
 magic = {b'\xcf\xfa\xed\xfe',b'\xce\xfa\xed\xfe',b'\xfe\xed\xfa\xcf',b'\xca\xfe\xba\xbe',b'\xbe\xba\xfe\xca'}
 records = []
 for binary in sorted(app.rglob('*')):
@@ -20,7 +21,7 @@ for binary in sorted(app.rglob('*')):
         if f.read(4) not in magic: continue
     architectures = subprocess.check_output(['lipo','-archs',str(binary)],text=True).strip().split()
     assert 'arm64' in architectures, binary
-    owner = ps2 if binary.is_relative_to(ps2) else engine if binary.is_relative_to(engine) else app
+    owner = ps3 if binary.is_relative_to(ps3) else ps2 if binary.is_relative_to(ps2) else engine if binary.is_relative_to(engine) else app
     executable = owner/'Contents/MacOS'
     commands = subprocess.check_output(['otool','-arch','arm64','-l',str(binary)],text=True)
     # LC_ID_DYLIB is a library's own install-name, not a required dependency.
@@ -35,7 +36,8 @@ for binary in sorted(app.rglob('*')):
         elif re.search(r'cmd LC_VERSION_MIN_MACOSX\b',block):
             versions += re.findall(r'^\s+version (\d+\.\d+(?:\.\d+)?)$',block,re.M)
     assert versions, binary
-    assert all(tuple(map(int,v.split('.'))) <= (14,0,0) for v in versions), (binary,versions)
+    maximum = (15,0,0) if owner == ps3 else (14,0,0)
+    assert all(tuple(map(int,v.split('.'))) <= maximum for v in versions), (binary,versions)
     dependencies = subprocess.check_output(['otool','-arch','arm64','-L',str(binary)],text=True).splitlines()[1:]
     resolved=[]
     for line in dependencies:
@@ -111,10 +113,16 @@ with tempfile.TemporaryDirectory(prefix='koala-portability-') as directory:
     # -testconfig exits before MainWindow creation or emulation starts.
     subprocess.run([ps2_report['executable'],*ps2_report['checkArguments']],env=env,cwd=scratch,
                    stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True,timeout=30)
+    ps3_report=json.loads(subprocess.check_output([str(executable),'--ps3-report'],env=env,text=True,cwd=scratch))
+    assert ps3_report['enginePresent'] and ps3_report['minimumMacOS']=='15.0'
+    assert ps3_report['standardProfileShared'] and not ps3_report['webRuntime']
+    assert Path(ps3_report['executable']).is_relative_to(moved)
+    subprocess.run(['codesign','--verify','--deep','--strict',str(moved/'Contents/Helpers/RPCS3.app')],check=True)
     third=json.loads(subprocess.check_output([str(executable),'--storage-report'],env=env,text=True,cwd=scratch))
     assert third['scale']==3 and third['muted'] is True
 report={'pass':True,'app':str(app),'macho':records,'zip_relocation':'signature and headless native startup passed',
         'preference_reopen':'passed','otherPhysicalMac':'not tested','Gatekeeper':'local ad-hoc signature, not Developer ID notarized',
+        'ps3_relocated_probe':'passed; standard profile read only; no firmware/game',
         'ps2_relocated_config_check':'passed; no BIOS/ROM; no emulation', 'uiOpened':False,'fullscreenTested':False}
 (root/'output/package-audit.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))

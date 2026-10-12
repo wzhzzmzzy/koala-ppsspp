@@ -2,10 +2,16 @@ import Foundation
 import Darwin
 
 enum GamePlatform: String, Codable, CaseIterable, Identifiable {
-    case psp, ps2
+    case psp, ps2, ps3
     var id: String { rawValue }
     var title: String { rawValue.uppercased() }
-    var extensions: [String] { self == .psp ? ["iso", "cso", "chd", "pbp", "elf"] : ["iso", "chd", "bin", "mdf", "cso", "gz", "elf"] }
+    var extensions: [String] {
+        switch self {
+        case .psp: return ["iso", "cso", "chd", "pbp", "elf"]
+        case .ps2: return ["iso", "chd", "bin", "mdf", "cso", "gz", "elf"]
+        case .ps3: return ["iso", "bin", "elf", "self", "sfo", "sfb"]
+        }
+    }
 }
 
 struct Game: Codable, Identifiable, Hashable {

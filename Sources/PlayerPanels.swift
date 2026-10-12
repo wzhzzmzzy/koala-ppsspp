@@ -139,7 +139,7 @@ struct DiagnosticsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             PanelHeader(title: "日志与调试", subtitle: "本机记录 · 导出不会包含 ROM 或存档内容")
-            if !model.isPS2 { HStack(spacing: 12) {
+            if model.isPSP { HStack(spacing: 12) {
                 value("游戏帧率", model.status.map { String(format: "%.1f FPS", $0.game_fps) } ?? "—")
                 value("VBlank 平均 / P95", model.status.flatMap { s in s.frame_ms_mean.map { String(format: "%.1f / %.1f ms", $0, s.frame_ms_p95 ?? 0) } } ?? "—")
                 value("控制指令往返", model.lastCommandMilliseconds.map { String(format: "%.0f ms", $0) } ?? "未测量")
@@ -156,15 +156,15 @@ struct DiagnosticsView: View {
                 Text("Vulkan \(driver.apiVersion) · \(driver.driverInfo)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             }
             } else {
-                Text(model.running ? "ARMSX2 进程运行中 · FPS / 帧时间请查看游戏 HUD。" : "ARMSX2 尚未运行。")
+                Text(model.running ? "\(model.nativeEngineName) 进程运行中 · FPS / 帧时间请查看引擎 HUD。" : "\(model.nativeEngineName) 尚未运行。")
                     .font(.callout).foregroundStyle(.secondary)
-                Text("PS2 实时遥测与输入延迟尚未接入；此处提供引擎日志和诊断导出。")
+                Text("\(model.platform.title) 实时遥测与输入延迟尚未接入；此处提供引擎日志和诊断导出。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack {
                 Text("引擎日志").font(.headline)
                 Spacer()
-                if !model.isPS2 { Button("测试控制响应") { model.command("ping") }.disabled(!model.ready || model.pending)
+                if model.isPSP { Button("测试控制响应") { model.command("ping") }.disabled(!model.ready || model.pending)
                 Button("截取游戏画面") { model.captureGame() }.disabled(!model.ready || model.pending)
                 }
                 Button("刷新") { model.refreshLogs() }
@@ -197,20 +197,20 @@ struct PlayerCommands: Commands {
             Button("添加本地游戏…") { model.chooseFiles() }.keyboardShortcut("o").disabled(model.running)
             Button("从游戏库移除") { model.removeSelected() }.disabled(model.running || model.selected == nil)
         }
-        CommandGroup(replacing: .appSettings) { Button("播放设置…") { model.present(model.isPS2 ? .ps2 : .settings) }.keyboardShortcut(",") }
+        CommandGroup(replacing: .appSettings) { Button("播放设置…") { model.present(model.settingsPanel) }.keyboardShortcut(",") }
         UnusedCommands()
-        CommandGroup(replacing: .help) { Button("键盘与手柄示意图…") { model.present(.controls) }.keyboardShortcut("/", modifiers: [.command]) }
+        CommandGroup(replacing: .help) { Button(model.isPS3 ? "PS3 键盘与手柄设置…" : "键盘与手柄示意图…") { model.present(.controls) }.keyboardShortcut("/", modifiers: [.command]) }
         CommandMenu("游戏") {
             Button("开始游戏") { model.start() }.disabled(model.running || model.selected == nil)
-            if !model.isPS2 { Button("继续自动存档") { model.start(resume: true) }.disabled(model.isPS2 || model.running || model.selected?.autoState == nil)
+            if model.isPSP { Button("继续自动存档") { model.start(resume: true) }.disabled(model.isPS2 || model.running || model.selected?.autoState == nil)
             }
             Button("回到游戏窗口") { model.focusGame() }.disabled(!model.running)
             Divider()
-            if !model.isPS2 { Button(model.status?.playing == false ? "继续" : "暂停") { model.command("pause") }.keyboardShortcut("p").disabled(!model.ready || model.pending)
+            if model.isPSP { Button(model.status?.playing == false ? "继续" : "暂停") { model.command("pause") }.keyboardShortcut("p").disabled(!model.ready || model.pending)
             Button("保存手动存档") { model.command("save 1") }.keyboardShortcut("s").disabled(!model.ready || model.pending)
             Button("读取手动存档") { model.command("load 1") }.keyboardShortcut("l").disabled(!model.ready || model.pending || model.status?.manual_exists != true)
             }
-            Button(model.isPS2 ? "结束 ARMSX2" : "保存并结束游戏") { model.command("quit") }.disabled(!model.running || model.pending)
+            Button(model.isPSP ? "保存并结束游戏" : "请求退出 \(model.nativeEngineName)") { model.command("quit") }.disabled(!model.running || model.pending)
         }
         CommandMenu("诊断") {
             Button("日志与调试…") { model.present(.diagnostics) }.keyboardShortcut("d", modifiers: [.command, .shift])
