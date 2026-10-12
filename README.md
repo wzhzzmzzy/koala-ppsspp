@@ -1,12 +1,12 @@
-# Koala PSP
+# Koala PS
 
-面向 macOS 的原生 PSP / PS2 播放器：SwiftUI / AppKit 游戏库与设置界面，内置 PPSSPP 1.20.4 ARM64 引擎，Vulkan 经 MoltenVK 使用 Metal，SDL2 提供 PSP 原生输入与游戏窗口。PS2 集成官方 ARMSX2 ARM64 macOS 引擎（Qt/C++，默认 Metal），由独立进程运行。不使用 WebView、Electron、JavaScript 或 WebAssembly。
+面向 macOS 的原生 PSP / PS2 模拟器：SwiftUI / AppKit 游戏库与设置界面，内置 PPSSPP 1.20.4 ARM64 引擎，Vulkan 经 MoltenVK 使用 Metal，SDL2 提供 PSP 原生输入与游戏窗口。PS2 集成官方 ARMSX2 ARM64 macOS 引擎（Qt/C++，默认 Metal），由独立进程运行。
 
 ## 下载与安装
 
 当前版本 **0.5.1（PS2 预览版）**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
 
-**[下载 Koala-PSP-0.5.1-macOS-arm64.zip](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.5.1-macOS-arm64.zip)** · [SHA-256](dist/SHA256SUMS)
+**[下载 Koala-PS-0.5.1-macOS-arm64.zip](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.5.1-macOS-arm64.zip)** · [SHA-256](dist/SHA256SUMS)
 
 1. 下载 ZIP 并解压，将 `Koala PSP.app` 拖入「应用程序」。
 2. 打开应用，在左侧选择 PSP 或 PS2，点击「添加游戏」，选择本机游戏镜像。PS2 需要先在「PS2 设置」导入自己的 BIOS。
