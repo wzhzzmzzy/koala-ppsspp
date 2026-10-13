@@ -25,3 +25,7 @@ __pycache__/
 *.nvm
 *.rom1
 *.rom2
+
+# PS3 system firmware is downloaded separately from Sony.
+*.pup
+*.PUP

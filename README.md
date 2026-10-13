@@ -2,9 +2,11 @@
 
 面向 macOS 的原生 PSP / PS2 / PS3 模拟器：SwiftUI / AppKit 游戏库与设置界面，内置 PPSSPP 1.20.4 ARM64 引擎，Vulkan 经 MoltenVK 使用 Metal，SDL2 提供 PSP 原生输入与游戏窗口。PS2 集成官方 ARMSX2 ARM64 macOS 引擎（Qt/C++，默认 Metal），由独立进程运行。PS3 使用官方 RPCS3 ARM64 独立进程，保留原生设置与输入管理。
 
-## PS3 本地预览 · 0.7.0-preview.2
+## PS3 预览 · 0.7.0-preview.2
 
-本地 App：`dist/0.7.0-preview.2/Koala PSP.app`；完整分享包：`dist/Koala-PSP-0.7.0-preview.2-macOS-arm64.zip`。本轮生成本地构建，尚未发布该版本的远端 Release。
+[下载完整 macOS ARM64 ZIP](https://github.com/wzhzzmzzy/koalaps/releases/download/v0.7.0-preview.2/Koala-PSP-0.7.0-preview.2-macOS-arm64.zip) · [版本说明与校验和](https://github.com/wzhzzmzzy/koalaps/releases/tag/v0.7.0-preview.2)
+
+本地 App：`dist/0.7.0-preview.2/Koala PSP.app`；完整分享包：`dist/Koala-PSP-0.7.0-preview.2-macOS-arm64.zip`。
 
 PS3 需要 **Apple Silicon + macOS 15 或更新版本**；PSP / PS2 仍保留 macOS 14 最低要求。源码从当前提交重建可得到完整三平台应用，目标 Mac 不需要安装 RPCS3、Qt 或开发工具。
 
@@ -32,13 +34,13 @@ PS3 需要 **Apple Silicon + macOS 15 或更新版本**；PSP / PS2 仍保留 ma
 
 ### 本轮验证边界
 
-已验证合成数据导入/边界校验、固件缺失拦截、安装参数、已安装游戏扫描、自定义 VFS 及配置保留、PSP/PS2/PS3 切换、离屏原生面板和官方 CLI 后台启动。没有真实 PS3 固件或游戏，**未验证实际固件/PKG 安装、游戏启动、画面/音频、控制器、存档、正常游玩时的退出或 FPS**。无前台激活，不测试全屏。签名仍为本地 ad-hoc，非 Developer ID 公证；第二台真机尚未测试。
+已验证合成数据导入/边界校验、固件缺失拦截、安装参数、已安装游戏扫描、自定义 VFS 及配置保留、PSP/PS2/PS3 切换、离屏原生面板和官方 CLI 后台启动。已用用户提供的 PS3UPDAT.PUP 安装并检测到 **4.92 固件**。尚无 PS3 游戏，**未验证 PKG 安装、游戏启动、画面/音频、控制器、存档、正常游玩时的退出或 FPS**。官方无窗口安装器在文件写入成功后发生退出阶段异常；已独立核验安装成功日志、固件文件及后续启动，手工初始化推荐下面的原生界面方式。无前台激活，不测试全屏。签名仍为本地 ad-hoc，非 Developer ID 公证；第二台真机尚未测试。
 
-## 安装本地版
+## 下载与安装
 
-当前本地版 **0.7.0-preview.2**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**；PS3 需要 macOS 15+。
+当前预览版 **0.7.0-preview.2**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**；PS3 需要 macOS 15+。
 
-完整 ZIP 与 App 位于上述 `dist/` 路径。历史远端版本可在 [Releases](https://github.com/wzhzzmzzy/koalaps/releases) 查看；它们不包含本次清理。
+完整 ZIP 可从上方链接下载，本地 App 位于上述 `dist/` 路径；所有发行包见 [Releases](https://github.com/wzhzzmzzy/koalaps/releases)。
 
 1. 下载 ZIP 并解压，将 `Koala PSP.app` 拖入「应用程序」。
 2. 打开应用，在左侧选择 PSP、PS2 或 PS3，点击「添加游戏」，选择本机游戏镜像。PS2 需要先在「PS2 设置」导入自己的 BIOS。
@@ -50,12 +52,23 @@ ZIP 已包含完整应用、PPSSPP / ARMSX2 / RPCS3 引擎、Qt / SDL / MoltenVK
 
 ```sh
 cd dist
-shasum -a 256 -c SHA256SUMS
+shasum -a 256 -c Koala-PSP-0.7.0-preview.2-macOS-arm64.zip.sha256
 ```
 
 ## PSP 图形驱动
 
 PSP 固定使用 **MoltenVK → Metal**，设置中显示运行路线，提供渲染分辨率、纹理、音频和 HUD 控制。已移除 KosmicKrisp 实验选择、加载分支、ICD / Loader 运行库和 SDK 下载步骤。旧偏好中的驱动字段自动删除，其他设置与游戏数据保留。
+
+## 初始化 PS3 模拟器 · 每台设备做一次
+
+**固件下载：[Sony 官方 PS3 系统软件页面](https://www.playstation.com/en-us/support/hardware/ps3/system-software/)。** 找到「Update using a computer」下的下载按钮，将文件保存为 `PS3UPDAT.PUP`，例如放在 `~/Downloads/`。固件直接从 Sony 下载；本仓库和应用 ZIP 不附带固件或其镜像，相关条款见 [Sony 系统软件许可](https://www.playstation.com/en-us/legal/ps3-system-software-license-agreement/)。
+
+1. 安装并打开 Koala PS，在左侧选择 **PS3**，打开 **PS3 设置**。
+2. 点击 **安装 PS3UPDAT.PUP…**，选择刚下载的文件。RPCS3 会打开原生安装确认窗口，确认安装后等待它报告完成；首次模块缓存准备可能需要一些时间。
+3. 使用 RPCS3 菜单正常退出，回到 Koala PS。重新进入 PS3 设置应显示「已检测到 PS3 固件」及版本号，此时初始化完成。以后启动游戏无需反复下载或安装 PUP。
+4. 尚未准备游戏时可以停在这里。固件负责系统初始化，游戏仍需另外添加；已有独立 RPCS3 安装并使用相同标准目录时，可以直接识别其固件。
+
+本机 2026-10-13 已用用户提供的 **4.92** PUP 验证安装和识别；Sony 页面可能提供更新版本。初始化写入 `~/Library/Application Support/rpcs3/dev_flash/`（自定义 VFS 时以原生设置为准），不把固件写入 App。把 ZIP 发到另一台 Mac 后，应在那台设备重复以上初始化步骤。
 
 ## 如何运行 PS3 游戏
 
