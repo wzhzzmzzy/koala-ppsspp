@@ -10,7 +10,6 @@ import SwiftUI
     let model = PlayerModel.shared
     model.preferences = PlayerPreferences(scale: 3)
     model.preferences.hud = 2
-    if CommandLine.arguments.contains("--kosmickrisp") { model.preferences.vulkanDriver = .kosmickrisp }
     model.refreshMappings()
     var panels: [(String, AnyView)] = [
         ("settings-video", AnyView(PlayerSettingsView(model: model))),

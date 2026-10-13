@@ -5,7 +5,6 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--rom', type=Path, required=True, help='Local game image (not included)')
 parser.add_argument('--state', type=Path, required=True, help='Matching in-game save state (not included)')
-parser.add_argument('--driver', choices=['moltenvk','kosmickrisp'], default='moltenvk')
 options = parser.parse_args()
 rom = options.rom.expanduser().resolve()
 state = options.state.expanduser().resolve()
@@ -13,11 +12,11 @@ if not rom.is_file() or not state.is_file():
     parser.error('--rom and --state must refer to existing local files')
 build = json.loads((root/'output/build.json').read_text())
 app = Path(build['app'])
-case = root/'output'/('background-'+build['version']+'-'+options.driver+'-'+time.strftime('%H%M%S'))
+case = root/'output'/('background-'+build['version']+'-moltenvk-'+time.strftime('%H%M%S'))
 case.mkdir()
 for name in ['config/ppsspp', 'cache', 'run', 'logs']:
     (case/name).mkdir(parents=True)
-prefs = dict(vulkanDriver=options.driver, scale=3, muted=True, volume=37, hud=2, audioBuffer=512,
+prefs = dict(scale=3, muted=True, volume=37, hud=2, audioBuffer=512,
              vsync=False, textureFilter=3, anisotropy=2, smart2D=True, frameSkip=0, fillAudioGaps=False)
 (case/'config/preferences.json').write_text(json.dumps(prefs))
 env = dict(os.environ, KOALA_DATA_DIR=str(case), KOALA_CONFIG_DIR=str(case/'config/ppsspp'),
@@ -64,8 +63,8 @@ try:
     assert {k:first[k] for k in ['render_scale','volume','hud','audio_buffer','vsync','texture_filter','anisotropy','muted']} == dict(render_scale=3,volume=37,hud=2,audio_buffer=512,vsync=False,texture_filter=3,anisotropy=2,muted=True), first
     assert first['frame_ms_mean']>0 and first['frame_ms_p95']>0
     result['driver'] = json.loads((case/'logs/vulkan-driver.json').read_text())
-    assert result['driver']['requested'] == options.driver
-    assert result['driver']['driverName'].lower() == options.driver
+    assert result['driver']['requested'] == 'moltenvk'
+    assert result['driver']['driverName'].lower() == 'moltenvk'
     assert result['driver']['deviceCreated']
     result['initialStatus'] = first
     result['backgroundCheck'] = json.loads(subprocess.check_output([str(root/'output/check-background'),str(child.pid)]))

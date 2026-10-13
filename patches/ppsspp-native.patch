@@ -14,7 +14,7 @@ index 53a86f5..b6a3ecf 100644
  #define _LARGE_TIME_API
  #endif
 diff --git a/Common/GPU/Vulkan/VulkanContext.cpp b/Common/GPU/Vulkan/VulkanContext.cpp
-index 9b38473..e5de885 100644
+index 9b38473..88f693b 100644
 --- a/Common/GPU/Vulkan/VulkanContext.cpp
 +++ b/Common/GPU/Vulkan/VulkanContext.cpp
 @@ -4,6 +4,8 @@
@@ -26,7 +26,7 @@ index 9b38473..e5de885 100644
  
  #include "Common/System/System.h"
  #include "Common/System/Display.h"
-@@ -567,6 +569,18 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
+@@ -567,6 +569,13 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
  	INFO_LOG(Log::G3D, "Chose physical device %d: %s", physical_device, physicalDeviceProperties_[physical_device].properties.deviceName);
  
  	vulkanDeviceApiVersion_ = physicalDeviceProperties_[physical_device].properties.apiVersion;
@@ -37,15 +37,10 @@ index 9b38473..e5de885 100644
 +		vkGetPhysicalDeviceProperties2(physical_devices_[physical_device], &props);
 +	}
 +	const char *koalaRequested = getenv("KOALA_VULKAN_DRIVER");
-+	if (koalaRequested && !strcmp(koalaRequested, "kosmickrisp") &&
-+		!strstr(koalaDriverProps.driverName, "KosmicKrisp") && !strstr(koalaDriverProps.driverName, "kosmickrisp")) {
-+		init_error_ = "Selected KosmicKrisp, but Vulkan enumerated a different driver. Refusing automatic fallback.";
-+		return VK_ERROR_INCOMPATIBLE_DRIVER;
-+	}
  
  	queue_count = 0;
  	vkGetPhysicalDeviceQueueFamilyProperties(physical_devices_[physical_device_], &queue_count, nullptr);
-@@ -810,6 +824,7 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
+@@ -810,6 +819,7 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
  	if (res != VK_SUCCESS) {
  		init_error_ = "Unable to create Vulkan device";
  		ERROR_LOG(Log::G3D, "%s", init_error_.c_str());
@@ -53,7 +48,7 @@ index 9b38473..e5de885 100644
  	} else {
  		VulkanLoadDeviceFunctions(device_, extensionsLookup_, vulkanDeviceApiVersion_);
  	}
-@@ -870,6 +885,26 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
+@@ -870,6 +880,26 @@ VkResult VulkanContext::CreateDevice(int physical_device) {
  		break;
  	}
  
@@ -80,35 +75,6 @@ index 9b38473..e5de885 100644
  	return res;
  }
  
-diff --git a/Common/GPU/Vulkan/VulkanLoader.cpp b/Common/GPU/Vulkan/VulkanLoader.cpp
-index cb1f03b..5cea45c 100644
---- a/Common/GPU/Vulkan/VulkanLoader.cpp
-+++ b/Common/GPU/Vulkan/VulkanLoader.cpp
-@@ -20,6 +20,7 @@
- #include <vector>
- #include <string>
- #include <cstring>
-+#include <cstdlib>
- 
- #include "Core/Config.h"
- #include "Common/Data/Format/JSONReader.h"
-@@ -364,6 +365,16 @@ static VulkanLibraryHandle VulkanLoadLibrary(std::string *errorString) {
- 	return LoadLibrary(L"vulkan-1.dll");
- #else
- 	void *lib = nullptr;
-+#if PPSSPP_PLATFORM(MAC)
-+	const char *koalaDriver = getenv("KOALA_VULKAN_DRIVER");
-+	if (koalaDriver && !strcmp(koalaDriver, "kosmickrisp")) {
-+		// KosmicKrisp is an ICD, and must be loaded through the Vulkan Loader.
-+		// Do not fall through to MoltenVK if this explicit experimental choice fails.
-+		lib = dlopen("@executable_path/../Frameworks/KosmicKrisp/libvulkan.1.dylib", RTLD_NOW | RTLD_LOCAL);
-+		if (!lib && errorString) *errorString = std::string("KosmicKrisp loader unavailable: ") + dlerror();
-+		return lib;
-+	}
-+#endif
- 
- #if PPSSPP_PLATFORM(ANDROID) && PPSSPP_ARCH(ARM64)
- 	if (!g_Config.sCustomDriver.empty() && g_Config.sCustomDriver != "Default") {
 diff --git a/Core/HW/Display.cpp b/Core/HW/Display.cpp
 index 1ac986a..c4675a4 100644
 --- a/Core/HW/Display.cpp

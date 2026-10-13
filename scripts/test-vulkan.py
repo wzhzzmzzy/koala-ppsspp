@@ -1,4 +1,4 @@
-"""Exercise both bundled Vulkan paths in hidden windows and isolated XDG data."""
+"""Exercise the bundled MoltenVK runtime in hidden windows and isolated XDG data."""
 from pathlib import Path
 import argparse, json, os, subprocess, time, uuid
 
@@ -7,7 +7,6 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--rom', required=True, type=Path)
 parser.add_argument('--state', type=Path)
 parser.add_argument('--app', type=Path)
-parser.add_argument('--driver', choices=['moltenvk', 'kosmickrisp', 'both'], default='both')
 options = parser.parse_args()
 rom = options.rom.expanduser().resolve()
 assert rom.is_file(), rom
@@ -15,10 +14,10 @@ build = json.loads((root/'output/build.json').read_text())
 app = (options.app or Path(build['app'])).resolve()
 subprocess.run(['xcrun','swiftc',str(root/'scripts/check-background.swift'),'-o',str(root/'output/check-background'),'-module-cache-path',str(root/'output/swift-module-cache')],check=True)
 results = []
-for driver in (['moltenvk','kosmickrisp'] if options.driver == 'both' else [options.driver]):
+for driver in ['moltenvk']:
     case = root/'output'/('vulkan-'+driver+'-'+str(uuid.uuid4())[:8])
     for folder in ['config/ppsspp','run','logs']: (case/folder).mkdir(parents=True,exist_ok=True)
-    (case/'config/preferences.json').write_text(json.dumps(dict(vulkanDriver=driver,scale=3,muted=True,hud=2)))
+    (case/'config/preferences.json').write_text(json.dumps(dict(scale=3,muted=True,hud=2)))
     env = {k:v for k,v in os.environ.items() if not k.startswith(('VK_','MESA_','KK_','KOALA_','XDG_')) and k!='SDL_VULKAN_LIBRARY'}
     env.update(KOALA_DATA_DIR=str(case), KOALA_CONFIG_DIR=str(case/'config/ppsspp'), KOALA_CONTROL_DIR=str(case/'run'),
                KOALA_LOG_DIR=str(case/'logs'), KOALA_BACKGROUND_TEST='1')

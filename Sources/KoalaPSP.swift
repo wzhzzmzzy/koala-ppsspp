@@ -108,6 +108,7 @@ struct CommandAck: Decodable { var id: String; var ok: Bool; var message: String
             try store.migrateLegacy()
             games = try store.read([Game].self, from: store.libraryURL, fallback: [])
             preferences = try store.read(PlayerPreferences.self, from: store.preferencesURL, fallback: .init())
+            try store.migrateLegacyDriverPreference()
             libraryState = try store.read(LibraryState.self, from: store.stateURL, fallback: .init())
             platform = libraryState.platform ?? games.first(where: { $0.id == libraryState.selectedGameID })?.platform ?? .psp
             selection = games.contains(where: { $0.id == libraryState.selectedGameID }) ? libraryState.selectedGameID : games.first?.id

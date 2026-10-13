@@ -82,7 +82,7 @@ struct PS3SettingsView: View {
                             if model.running { model.focusGame() } else { model.startPS3(.library) }
                         }.disabled(!PS3Engine.supported)
                     }
-                    Text("PSP 的 KosmicKrisp 选项不应用到 PS3。FPS / 帧时间可在 RPCS3 的性能叠层中查看，启动器尚未接收实时遥测。")
+                    Text("FPS / 帧时间可在 RPCS3 的性能叠层中查看，启动器尚未接收实时遥测。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("本地数据") {

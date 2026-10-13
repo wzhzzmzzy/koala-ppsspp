@@ -12,15 +12,13 @@ repo = Path(os.environ.get('PPSSPP_SOURCE_DIR', str(root/'vendor/ppsspp'))).expa
 (root/'output').mkdir(exist_ok=True)
 if not (repo/'build/PPSSPPSDL.app/Contents/MacOS/PPSSPPSDL').is_file():
     raise SystemExit('Build the PPSSPPSDL target successfully before packaging.')
-version = '0.7.0-preview.1'
+version = '0.7.0-preview.2'
 app = root / f'dist/{version}/Koala PSP.app'
 contents = app / 'Contents'
 ps3_manifest = json.loads((root/'rpcs3-upstream.json').read_text())
 subprocess.run(['python3', str(root/'scripts/prepare-ps3.py')], check=True)
 ps2_manifest = json.loads((root/'armsx2-upstream.json').read_text())
 subprocess.run(['python3', str(root/'scripts/prepare-ps2.py')], check=True)
-subprocess.run(['python3', str(root/'scripts/prepare-vulkan.py')], check=True)
-vulkan_manifest = json.loads((root/'vulkan-upstream.json').read_text())
 for name in ['MacOS', 'Resources/Licenses', 'Helpers']:
     (contents / name).mkdir(parents=True, exist_ok=True)
 
@@ -63,25 +61,6 @@ while queue:
             queue.append(destination)
         relative = ('@executable_path/../Frameworks/' if target == binary else '@loader_path/') + source.name
         subprocess.run(['install_name_tool', '-change', dependency, relative, str(target)], check=True)
-
-# The optional driver is loaded on demand only, so older macOS keeps the default path.
-optional = frameworks/'KosmicKrisp'
-optional.mkdir(exist_ok=True)
-sdk = root/'vendor/vulkan-sdk'/vulkan_manifest['sdkVersion']
-for source, name in [('libvulkan.1.4.363.dylib', 'libvulkan.1.dylib'), ('libvulkan_kosmickrisp.dylib', 'libkosmickrisp.dylib')]:
-    destination = optional/name
-    if source.startswith('libvulkan.1.'):
-        subprocess.run(['lipo', str(sdk/'macOS/lib'/source), '-thin', 'arm64', '-output', str(destination)], check=True)
-    else:
-        shutil.copy2(sdk/'macOS/lib'/source, destination)
-    subprocess.run(['install_name_tool', '-id', '@loader_path/'+name, str(destination)], check=True)
-    subprocess.run(['codesign', '--force', '--sign', '-', str(destination)], check=True)
-(optional/'kosmickrisp_icd.json').write_text(json.dumps({'file_format_version':'1.0.0', 'ICD':{'api_version':'1.4.0', 'library_path':'./libkosmickrisp.dylib'}}, indent=2)+'\n')
-shutil.copy2(root/'vulkan-upstream.json', contents/'Resources/vulkan-upstream.json')
-for name, expected in vulkan_manifest['notices'].items():
-    notice = root/'licenses/vulkan'/name
-    assert hashlib.sha256(notice.read_bytes()).hexdigest() == expected, notice
-    shutil.copy2(notice, contents/'Resources/Licenses'/notice.name)
 
 ps2_engine = contents/'Helpers/ARMSX2.app'
 if ps2_engine.exists():
@@ -127,7 +106,7 @@ shutil.copy2(root/'Assets/AppIconParts/icon-256.png',engine/'Contents/Resources/
 plist = {
     'CFBundleExecutable': 'KoalaPSP', 'CFBundleIdentifier': 'local.koala.psp.native',
     'CFBundleName': 'Koala PSP', 'CFBundleDisplayName': 'Koala PSP', 'CFBundlePackageType': 'APPL',
-    'CFBundleShortVersionString': '0.7.0', 'CFBundleVersion': '10', 'KoalaReleaseVersion': version, 'LSMinimumSystemVersion': '14.0',
+    'CFBundleShortVersionString': '0.7.0', 'CFBundleVersion': '11', 'KoalaReleaseVersion': version, 'LSMinimumSystemVersion': '14.0',
     'CFBundleIconFile': 'AppIcon',
     'NSHighResolutionCapable': True,
     'NSHumanReadableCopyright': 'Koala native launcher; PPSSPP GPL-2.0-or-later; ARMSX2 GPL-3.0-or-later; RPCS3 GPL-2.0-only',
@@ -146,7 +125,7 @@ subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=T
 record = {
     'app': str(app), 'version':version, 'architecture': 'arm64', 'launcher': 'SwiftUI/AppKit',
     'engine': 'PPSSPP v1.20.4', 'revision': subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip(),
-    'graphics': 'MoltenVK default; optional KosmicKrisp via Vulkan Loader (macOS 26+)', 'vulkan': vulkan_manifest, 'relocatedLibraries': copied,
+    'graphics': 'MoltenVK / Metal', 'relocatedLibraries': copied,
     'codeSigning': 'local ad-hoc; not notarized',
     'webRuntime': False, 'ps2': ps2_manifest, 'ps3': ps3_manifest,
     'minimumMacOS':'14.0', 'icon':str(icon),

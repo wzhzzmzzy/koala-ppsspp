@@ -123,6 +123,17 @@ struct LocalStore {
         try encoder.encode(value).write(to: url, options: .atomic)
     }
 
+    func migrateLegacyDriverPreference() throws {
+        guard FileManager.default.fileExists(atPath: preferencesURL.path) else { return }
+        let data = try Data(contentsOf: preferencesURL)
+        guard var values = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              values.removeValue(forKey: "vulkanDriver") != nil else { return }
+        // Remove just the retired choice, keeping all other settings and any
+        // fields from newer clients. The runtime is now always MoltenVK.
+        try JSONSerialization.data(withJSONObject: values, options: [.prettyPrinted, .sortedKeys])
+            .write(to: preferencesURL, options: .atomic)
+    }
+
     func migrateLegacy() throws {
         let marker = paths.state.appendingPathComponent("migration-v1.json")
         guard !FileManager.default.fileExists(atPath: marker.path) else { return }

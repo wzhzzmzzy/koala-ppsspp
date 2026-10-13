@@ -43,16 +43,8 @@ struct PlayerSettingsView: View {
     }
     var video: some View {
         Form {
-            Section("图形驱动 · 下次启动生效") {
-                Picker("Vulkan → Metal", selection: $draft.vulkanDriver) {
-                    ForEach(VulkanDriver.allCases) { driver in
-                        Text(driver.title).tag(driver).disabled(!driver.availableOnSystem)
-                    }
-                }
-                Text(draft.vulkanDriver == .kosmickrisp
-                     ? "实验性 · 需要 macOS 26+。使用 Metal 4，兼容性与性能因游戏而异；遇到异常可切回 MoltenVK。"
-                     : "默认驱动，支持 macOS 14+。KosmicKrisp 实验选项需要 macOS 26+。")
-                    .font(.caption).foregroundStyle(.secondary)
+            Section("图形驱动") {
+                LabeledContent("Vulkan → Metal", value: "MoltenVK")
             }
             Section {
                 Picker("内部渲染分辨率", selection: $draft.scale) {

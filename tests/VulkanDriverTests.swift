@@ -6,38 +6,23 @@ import Foundation
         defer { try? FileManager.default.removeItem(at: root) }
         let app = root.appendingPathComponent("A moved app with spaces.app")
         let frameworks = app.appendingPathComponent("Contents/Helpers/PPSSPPSDL.app/Contents/Frameworks")
-        let optional = frameworks.appendingPathComponent("KosmicKrisp")
-        try FileManager.default.createDirectory(at: optional, withIntermediateDirectories: true)
-        for file in [frameworks.appendingPathComponent("libMoltenVK.dylib"), optional.appendingPathComponent("libvulkan.1.dylib"), optional.appendingPathComponent("libkosmickrisp.dylib"), optional.appendingPathComponent("kosmickrisp_icd.json")] {
-            try Data("fixture".utf8).write(to: file)
-        }
-        assert(VulkanDriver.supports(.moltenvk, majorVersion: 14))
-        assert(!VulkanDriver.supports(.kosmickrisp, majorVersion: 25))
-        assert(VulkanDriver.supports(.kosmickrisp, majorVersion: 26))
+        try FileManager.default.createDirectory(at: frameworks, withIntermediateDirectories: true)
+        try Data("fixture".utf8).write(to: frameworks.appendingPathComponent("libMoltenVK.dylib"))
         let base = ["VK_DRIVER_FILES":"/wrong/driver.json", "VK_ICD_FILENAMES":"/another/icd.json", "VK_LOADER_DRIVERS_DISABLE":"*", "SDL_VULKAN_LIBRARY":"wrong", "KK_DEBUG":"all", "MESA_SHADER_CACHE_DIR":"wrong", "KOALA_DATA_DIR":"keep-saves", "PATH":"keep-path"]
         let cache = root.appendingPathComponent("cache")
         let old = try VulkanDriver.moltenvk.environment(base: base, app: app, cache: cache)
         assert(old["VK_DRIVER_FILES"] == nil && old["VK_ICD_FILENAMES"] == nil)
         assert(old["KOALA_DATA_DIR"] == "keep-saves" && old["PATH"] == "keep-path")
         assert(old["SDL_VULKAN_LIBRARY"] == frameworks.appendingPathComponent("libMoltenVK.dylib").path)
-        if VulkanDriver.kosmickrisp.availableOnSystem {
-            let next = try VulkanDriver.kosmickrisp.environment(base: base, app: app, cache: cache)
-            assert(next["VK_DRIVER_FILES"] == optional.appendingPathComponent("kosmickrisp_icd.json").path)
-            assert(next["VK_ICD_FILENAMES"] == nil && next["VK_LOADER_DRIVERS_DISABLE"] == nil && next["KK_DEBUG"] == nil)
-            assert(next["VK_LOADER_LAYERS_DISABLE"] == "~all~")
-            assert(next["KOALA_CACHE_DIR"] != old["KOALA_CACHE_DIR"])
-            assert(next["KOALA_DATA_DIR"] == old["KOALA_DATA_DIR"])
-            try FileManager.default.removeItem(at: optional.appendingPathComponent("libkosmickrisp.dylib"))
-            do {
-                _ = try VulkanDriver.kosmickrisp.environment(base: base, app: app, cache: cache)
-                fatalError("Missing ICD library must fail without falling back")
-            } catch let error as DriverError { assert(error.localizedDescription.contains("缺失")) }
-            _ = try VulkanDriver.moltenvk.environment(base: base, app: app, cache: cache)
-        }
+        let retired = try JSONDecoder().decode(PlayerPreferences.self, from: Data(#"{"vulkanDriver":"kosmickrisp","scale":3,"volume":37}"#.utf8))
+        assert(retired.vulkanDriver == .moltenvk && retired.scale == 3 && retired.volume == 37)
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(retired)) as! [String: Any]
+        assert(encoded["vulkanDriver"] == nil)
+        try FileManager.default.removeItem(at: frameworks.appendingPathComponent("libMoltenVK.dylib"))
         do {
-            _ = try JSONDecoder().decode(PlayerPreferences.self, from: Data(#"{"vulkanDriver":"unknown"}"#.utf8))
-            fatalError("Unknown driver must be reported, not silently substituted")
-        } catch is DecodingError { }
-        print("PASS: OS gate, driver persistence contract, relocated paths with spaces, environment isolation, separate caches, shared saves, missing driver rejection, MoltenVK recovery")
+            _ = try VulkanDriver.moltenvk.environment(base: base, app: app, cache: cache)
+            fatalError("Missing bundled MoltenVK must be rejected")
+        } catch let error as DriverError { assert(error.localizedDescription.contains("缺失")) }
+        print("PASS: retired preference migration, setting preservation, relocated paths with spaces, environment isolation, fixed MoltenVK, missing runtime rejection")
     }
 }

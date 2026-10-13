@@ -2,9 +2,9 @@
 
 面向 macOS 的原生 PSP / PS2 / PS3 模拟器：SwiftUI / AppKit 游戏库与设置界面，内置 PPSSPP 1.20.4 ARM64 引擎，Vulkan 经 MoltenVK 使用 Metal，SDL2 提供 PSP 原生输入与游戏窗口。PS2 集成官方 ARMSX2 ARM64 macOS 引擎（Qt/C++，默认 Metal），由独立进程运行。PS3 使用官方 RPCS3 ARM64 独立进程，保留原生设置与输入管理。
 
-## PS3 本地预览 · 0.7.0-preview.1
+## PS3 本地预览 · 0.7.0-preview.2
 
-本地 App：`dist/0.7.0-preview.1/Koala PSP.app`；完整分享包：`dist/Koala-PSP-0.7.0-preview.1-macOS-arm64.zip`。本轮生成本地构建，尚未发布该版本的远端 Release；下方 0.6.0 链接是此前的公开实验版。
+本地 App：`dist/0.7.0-preview.2/Koala PSP.app`；完整分享包：`dist/Koala-PSP-0.7.0-preview.2-macOS-arm64.zip`。本轮生成本地构建，尚未发布该版本的远端 Release。
 
 PS3 需要 **Apple Silicon + macOS 15 或更新版本**；PSP / PS2 仍保留 macOS 14 最低要求。源码从当前提交重建可得到完整三平台应用，目标 Mac 不需要安装 RPCS3、Qt 或开发工具。
 
@@ -13,7 +13,7 @@ PS3 需要 **Apple Silicon + macOS 15 或更新版本**；PSP / PS2 仍保留 ma
 3. 安装完成后关闭 RPCS3，启动器刷新固件状态和已安装游戏；也可以点击「扫描已安装游戏」。扫描只收录有可启动程序的 HDD 游戏，不把光盘更新数据列为独立游戏。
 4. 开始游戏后，键盘、手柄使用 RPCS3 的 **Pads**，画质、音频、性能叠层和每游戏配置使用 RPCS3 原生界面。Koala PS 尚未接入统一映射、实时 HUD 或快捷存档，因此不会显示 PSP 的相应按钮或示意图。
 
-固定官方版本为 **RPCS3 0.0.43-20284 / `2ba2f75bcea7ef6bdd687046c7fcfb790faf9853`**。完整官方 App（包括 Qt、MoltenVK 及资源）原样内置；Koala PS 不修改 PS3 模拟核心。启动时不设置全屏，不传递 PSP 的 KosmicKrisp 或 Vulkan 覆盖。退出使用 macOS 正常 Quit 请求，拒绝或超时后交由用户在原生窗口处理，不发送 SIGTERM / SIGKILL。
+固定官方版本为 **RPCS3 0.0.43-20284 / `2ba2f75bcea7ef6bdd687046c7fcfb790faf9853`**。完整官方 App（包括 Qt、MoltenVK 及资源）原样内置；Koala PS 不修改 PS3 模拟核心。启动时不设置全屏，使用官方内置图形运行库。退出使用 macOS 正常 Quit 请求，拒绝或超时后交由用户在原生窗口处理，不发送 SIGTERM / SIGKILL。
 
 ![PS3 原生设置](docs/images/ps3-settings.png)
 
@@ -34,17 +34,17 @@ PS3 需要 **Apple Silicon + macOS 15 或更新版本**；PSP / PS2 仍保留 ma
 
 已验证合成数据导入/边界校验、固件缺失拦截、安装参数、已安装游戏扫描、自定义 VFS 及配置保留、PSP/PS2/PS3 切换、离屏原生面板和官方 CLI 后台启动。没有真实 PS3 固件或游戏，**未验证实际固件/PKG 安装、游戏启动、画面/音频、控制器、存档、正常游玩时的退出或 FPS**。无前台激活，不测试全屏。签名仍为本地 ad-hoc，非 Developer ID 公证；第二台真机尚未测试。
 
-## 下载与安装
+## 安装本地版
 
-当前实验版 **0.6.0-experimental.1（KosmicKrisp 预览）**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**。
+当前本地版 **0.7.0-preview.2**，适用于 **Apple Silicon（M 系列）、macOS 14 及以上**；PS3 需要 macOS 15+。
 
-**[下载实验版 ZIP](https://github.com/wzhzzmzzy/koala-ppsspp/releases/download/v0.6.0-experimental.1/Koala-PSP-0.6.0-experimental.1-macOS-arm64.zip)** · [实验版发布说明](https://github.com/wzhzzmzzy/koala-ppsspp/releases/tag/v0.6.0-experimental.1) · [SHA-256](dist/SHA256SUMS)
+完整 ZIP 与 App 位于上述 `dist/` 路径。历史远端版本可在 [Releases](https://github.com/wzhzzmzzy/koalaps/releases) 查看；它们不包含本次清理。
 
 1. 下载 ZIP 并解压，将 `Koala PSP.app` 拖入「应用程序」。
-2. 打开应用，在左侧选择 PSP 或 PS2，点击「添加游戏」，选择本机游戏镜像。PS2 需要先在「PS2 设置」导入自己的 BIOS。
+2. 打开应用，在左侧选择 PSP、PS2 或 PS3，点击「添加游戏」，选择本机游戏镜像。PS2 需要先在「PS2 设置」导入自己的 BIOS。
 3. 点击开始游戏；镜像直接读取，不复制到应用、不上传。
 
-ZIP 已包含完整应用、PPSSPP / ARMSX2 引擎、Qt / SDL / MoltenVK 等依赖和图标，无需安装开发工具。可以将这个 ZIP 直接发给另一台符合要求的 Mac。游戏 ROM、BIOS、存档及个人设置不在包内，Intel Mac 不受支持。
+ZIP 已包含完整应用、PPSSPP / ARMSX2 / RPCS3 引擎、Qt / SDL / MoltenVK 等依赖和图标，无需安装开发工具。可以将这个 ZIP 直接发给另一台符合要求的 Mac。游戏 ROM、BIOS、存档及个人设置不在包内，Intel Mac 不受支持。
 
 目前为本地 ad-hoc 签名，尚未经过 Apple Developer ID 签名或公证。若首次打开提示无法验证开发者，确认文件来源与校验和后，可按 [Apple 说明](https://support.apple.com/zh-cn/102445) 在「系统设置 → 隐私与安全性」中允许打开。尚未在第二台物理 Mac 或 macOS 14 真机验证。
 
@@ -53,20 +53,19 @@ cd dist
 shasum -a 256 -c SHA256SUMS
 ```
 
-## KosmicKrisp 实验选项
+## PSP 图形驱动
 
-在 **PSP → 播放设置 → 视频与画质 → 图形驱动** 中选择 **KosmicKrisp · 实验性**，保存后重新启动游戏。默认仍是 MoltenVK；PS2 继续使用 ARMSX2 的 Metal 渲染器。
+PSP 固定使用 **MoltenVK → Metal**，设置中显示运行路线，提供渲染分辨率、纹理、音频和 HUD 控制。已移除 KosmicKrisp 实验选择、加载分支、ICD / Loader 运行库和 SDK 下载步骤。旧偏好中的驱动字段自动删除，其他设置与游戏数据保留。
 
-- KosmicKrisp 仅支持 **Apple Silicon + macOS 26 或更新版本**。旧系统禁用此选项；已有设置指向不支持的驱动时会明确报错，请手动切回 MoltenVK。
-- 内置 Vulkan Loader **1.4.363** 和 KosmicKrisp **vulkan-sdk-1.4.363 / 269a955c89**，来源为 LunarG 官方 SDK **1.4.363.0**；用户无需安装 SDK。它通过 Metal 4 工作。
-- 选择属于下一次启动配置。引擎分别加载内置库、限定 ICD 搜索、清除子进程继承的驱动/层覆盖；加载失败会报错，**不会悄悄回退到 OpenGL 或另一个驱动**。
-- 存档、游戏库和键位保持共用；可重建缓存按 `~/.cache/koala-psp/vulkan/{moltenvk,kosmickrisp}/` 分开。Mesa 着色器缓存放在 KosmicKrisp 子目录。
-- 「日志与调试」显示引擎实际返回的驱动名称、版本、Vulkan 版本和设备；诊断导出包含当前偏好及实际会话的驱动记录。刚保存的新选择不会冒充正在运行的驱动。
-- 退回方法：结束游戏，把设置改回 MoltenVK，再启动；无需重装或删除存档。[0.5.1 完整旧版](https://github.com/wzhzzmzzy/koala-ppsspp/raw/refs/heads/main/dist/Koala-PSP-0.5.1-macOS-arm64.zip) 仍保留。
+## 如何运行 PS3 游戏
 
-**验证范围：** macOS 26.2 / M3 Pro，PPSSPP 开源 cube 程序在两个驱动下均能后台渲染、截图、暂停/恢复及正常退出，截图已人工查看。无激活、无可见窗口、未测试全屏。缺失 ICD 的失败路径、偏好兼容与独立缓存、打包依赖/签名和 ZIP 移位均单独验证。用户原先的《战神》ISO 已不在原路径，本版尚未重新验证该商业游戏。没有前台 FPS 对比、长时间稳定性或第二台 Mac 的结果，**不宣称性能提升**。
+1. 打开应用并选择 **PS3 → PS3 设置 → 下载 Sony 官方固件**。在 Sony 页面下载 `PS3UPDAT.PUP`，回到应用点击「安装 PS3UPDAT.PUP」，等待 RPCS3 原生窗口报告完成。关闭 RPCS3 后，游戏库会刷新固件状态。
+2. 准备游戏：光盘备份文件夹通常包含 `PS3_GAME/USRDIR/EBOOT.BIN`；可以直接用「添加游戏」选择整个游戏文件夹。ISO 也可以添加；加密镜像仍需对应的个人光盘密钥，解密/验证由 RPCS3 管理。
+3. 数字版游戏通过 **PS3 设置 → 安装 PKG** 安装。若游戏需要 `.rap` / `.edat` 许可证，打开 RPCS3，在 **File → Install Packages/Raps/Edats** 中选择自己的许可证文件。关闭 RPCS3 后自动刷新，或点击「扫描已安装游戏」。
+4. 选择游戏，点击「开始 PS3 游戏」。第一次启动会编译 PPU / SPU 代码和着色器，等待编译完成；缓存随后会复用。先采用原生默认配置，确认能进入游戏后再调整画质。
+5. 在 RPCS3 工具栏 **Pads** 选择玩家、键盘或连接的手柄并保存。在原生 Settings / 每游戏设置中调整画质、音频与性能叠层。退出时先在游戏内保存进度，再关闭 RPCS3。
 
-![KosmicKrisp 实验设置](docs/images/settings-kosmickrisp.png)
+应用已经包含官方 RPCS3，无需再单独安装。最低为 Apple Silicon + macOS 15。当前尚无 PS3 游戏实测，游戏兼容性和性能需按具体游戏验证；参见 [RPCS3 官方兼容列表](https://rpcs3.net/compatibility) 与 [Sony 系统固件下载](https://www.playstation.com/en-us/support/hardware/ps3/system-software/)。
 
 ## PS2 接入范围
 
@@ -160,8 +159,6 @@ bash build.sh
 
 `build.sh` 调用 `scripts/prepare-engine.sh`，从官方仓库获取 [upstream.json](upstream.json) 固定的 PPSSPP `v1.20.4` / `fa50bb1976065c4f8b1b47af227d367fe9771555` 及子模块到 `vendor/ppsspp`；随后应用 [引擎补丁](patches/ppsspp-native.patch)，复制两个桥接头文件，构建 ARM64 引擎和原生界面，生成 `.app`、本地签名和 ZIP。
 
-KosmicKrisp 打包运行 `scripts/prepare-vulkan.py`：按 [vulkan-upstream.json](vulkan-upstream.json) 校验官方下载及已解包库的 SHA-256，通过无窗口 `copy_only=1` 方式解包到 `vendor/vulkan-sdk`，不安装系统级驱动。仅两份运行库和相对路径 ICD 进入 App；相关许可证与源码版本同时内置。当前构建此实验包使用 macOS 26+。
-
 PS3 打包运行 `scripts/prepare-ps3.py`，下载 [rpcs3-upstream.json](rpcs3-upstream.json) 固定的官方 7z 文件并核验 SHA-256、ARM64 与签名。不编译 RPCS3；对应源码与官方构建脚本的固定链接随包提供。
 
 PS2 打包阶段运行 `scripts/prepare-ps2.py`，按 [armsx2-upstream.json](armsx2-upstream.json) 下载官方 macOS 包并校验固定 SHA-256；所有内置库保留在 helper bundle 内。PS2 无需 Qt 开发工具，也不会编译官方 PS2 源码。若要自行编译，使用同提交的 `.github/workflows/macos_build.yml` 及依赖脚本。
@@ -172,7 +169,7 @@ PS2 打包阶段运行 `scripts/prepare-ps2.py`，按 [armsx2-upstream.json](arm
 PPSSPP_SOURCE_DIR=/absolute/path/to/ppsspp bash build.sh
 ```
 
-该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.7.0-preview.1/Koala PSP.app` 和 `dist/Koala-PSP-0.7.0-preview.1-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
+该目录会应用补丁并生成构建文件；版本不符会报错，不会自动重置已有 checkout。构建结果为 `dist/0.7.0-preview.2/Koala PSP.app` 和 `dist/Koala-PSP-0.7.0-preview.2-macOS-arm64.zip`，构建记录在 `output/build.json`。重新构建会替换本机 ZIP，随仓库提供的校验和只对应已发布的原始 ZIP。
 
 目录说明：`Sources/` 为原生 UI 和桥接；`patches/` 为引擎修改；`Assets/` 为 App 图标；`scripts/` 为打包/审计/测试工具；`tests/` 为存储和映射测试。`vendor/`、`output/` 与私有测试 `data/` 均不提交。
 
@@ -200,7 +197,7 @@ python3 scripts/audit-package.py
 
 ```sh
 KOALA_DATA_DIR="$PWD/output/preview-data" \
-  'dist/0.7.0-preview.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
+  'dist/0.7.0-preview.2/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/previews"
 xcrun swift -module-cache-path output/swift-module-cache \
   scripts/check-controller-geometry.swift output/previews
 ```
@@ -213,13 +210,10 @@ xcrun swiftc scripts/check-background.swift -o output/check-background \
 python3 scripts/test-background.py --rom /absolute/path/game.iso --state /absolute/path/in-game.ppst
 ```
 
-不需要商业游戏的双驱动烟雾测试（cube 来自固定 PPSSPP 子模块）：
+不需要商业游戏的 MoltenVK 烟雾测试（cube 来自固定 PPSSPP 子模块）：
 
 ```sh
 python3 scripts/test-vulkan.py --rom vendor/ppsspp/pspautotests/demos/cube.iso
-python3 scripts/test-vulkan-failure.py
-# 有自己的游戏与匹配存档时：
-python3 scripts/test-background.py --driver kosmickrisp --rom /absolute/path/game.iso --state /absolute/path/in-game.ppst
 ```
 
 以上游戏集成测试仅适用于 PSP。该测试使用隐藏引擎窗口和独立状态目录，验证设置、HUD、暂停/恢复、存档、实时改键及组合键。它不会测试全屏。前台实体手柄、长期稳定性和其它 Mac 尚未验证。
@@ -231,9 +225,9 @@ PS2 无 BIOS 的后台检查（不会创建窗口）：
 ```sh
 xcrun swiftc scripts/check-ps2-background.swift -o output/check-ps2-background \
   -module-cache-path output/swift-module-cache
-output/check-ps2-background "$PWD/dist/0.7.0-preview.1/Koala PSP.app" "$PWD/output/ps2-background-check"
+output/check-ps2-background "$PWD/dist/0.7.0-preview.2/Koala PSP.app" "$PWD/output/ps2-background-check"
 KOALA_DATA_DIR="$PWD/output/ps2-preview-data" \
-  'dist/0.7.0-preview.1/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
+  'dist/0.7.0-preview.2/Koala PSP.app/Contents/MacOS/KoalaPSP' --render-previews "$PWD/output/ps2-previews" --ps2
 ```
 
 PS3 无游戏的测试：
@@ -244,7 +238,7 @@ xcrun swiftc -parse-as-library Sources/AppStorage.swift Sources/PS3Engine.swift 
 output/ps3-tests
 xcrun swiftc scripts/check-ps3-background.swift -o output/check-ps3-background \
   -module-cache-path output/swift-module-cache
-output/check-ps3-background "$PWD/dist/0.7.0-preview.1/Koala PSP.app" "$PWD/output/ps3-background-check"
+output/check-ps3-background "$PWD/dist/0.7.0-preview.2/Koala PSP.app" "$PWD/output/ps3-background-check"
 ```
 
 后台检查使用 RPCS3 的 `--headless --version/--help`，会更新其标准缓存中的启动日志；如已运行 RPCS3，会先退出测试而不干扰已有会话。`--ps3-report` 只读状态，不启动引擎。测试没有模拟 PS3 游戏。

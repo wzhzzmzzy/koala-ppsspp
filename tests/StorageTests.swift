@@ -54,7 +54,13 @@ func check(_ expression: @autoclosure () throws -> Bool) rethrows {
         assert(old.launchConfig.contains("iShowStatusFlags = 6"))
         assert(old.launchConfig.contains("GameVolume = 100"))
         var customized = old
-        customized.vulkanDriver = .kosmickrisp
+        let retired = try JSONDecoder().decode(PlayerPreferences.self, from: Data(#"{"vulkanDriver":"kosmickrisp","scale":3,"volume":42}"#.utf8))
+        assert(retired.vulkanDriver == .moltenvk && retired.scale == 3 && retired.volume == 42)
+        try Data(#"{"vulkanDriver":"kosmickrisp","scale":3,"volume":42,"futureOption":true}"#.utf8).write(to: store.preferencesURL)
+        try store.migrateLegacyDriverPreference()
+        let migrated = try JSONSerialization.jsonObject(with: Data(contentsOf: store.preferencesURL)) as! [String: Any]
+        assert(migrated["vulkanDriver"] == nil && migrated["volume"] as? Int == 42 && migrated["futureOption"] as? Bool == true)
+        try store.migrateLegacyDriverPreference()
         customized.volume = 42; customized.hud = 2; customized.audioBuffer = 512
         customized.vsync = false; customized.textureFilter = 3; customized.anisotropy = 2; customized.smart2D = true
         customized.frameSkip = 1; customized.fillAudioGaps = false
